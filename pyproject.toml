@@ -1,0 +1,24 @@
+[project]
+name = "miniature"
+version = "0.1.0"
+description = "VectorChord Python SDK"
+authors = [
+    {name = "Keming", email = "kemingyang@tensorchord.ai"},
+]
+dependencies = []
+requires-python = ">=3.9"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+
+[tool.pdm]
+distribution = true
+
+[dependency-groups]
+lint = [
+    "ruff>=0.9.1",
+]
