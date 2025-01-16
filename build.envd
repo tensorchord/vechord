@@ -1,0 +1,8 @@
+# syntax=v1
+
+
+def build():
+    base(dev=True, image="ubuntu:22.04")
+    install.conda(use_mamba=True)
+    install.python()
+    install.python_packages(name=["uv"])
