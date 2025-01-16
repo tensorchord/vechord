@@ -8,10 +8,13 @@ format:
 	@uv run ruff format ${PY_SOURCE}
 
 clean:
-	@-rm -rf dist build */__pycache__ *.egg-info
+	@-rm -rf dist build */__pycache__ *.egg-info vechord/__version__.py
 
 build:
 	@uv build
+
+publish: build
+	@uv publish
 
 test:
 	@uv run pytest -v tests
