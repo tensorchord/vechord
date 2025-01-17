@@ -13,6 +13,7 @@ dependencies = [
     "pgvector>=0.3.6",
     "psycopg[binary]>=3.2.3",
     "pypdf>=5.1.0",
+    "rich>=13.9.4",
     "spacy>=3.8.4",
 ]
 

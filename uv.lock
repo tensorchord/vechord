@@ -1368,7 +1368,7 @@ wheels = [
 
 [[package]]
 name = "vechord"
-version = "0.1.dev2+ge5d1ecc.d20250116"
+version = "0.1.dev4+g9b92dd6.d20250117"
 source = { editable = "." }
 dependencies = [
     { name = "en-core-web-sm" },
@@ -1380,6 +1380,7 @@ dependencies = [
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pypdf" },
+    { name = "rich" },
     { name = "spacy" },
 ]
 
@@ -1399,6 +1400,7 @@ requires-dist = [
     { name = "pgvector", specifier = ">=0.3.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
     { name = "pypdf", specifier = ">=5.1.0" },
+    { name = "rich", specifier = ">=13.9.4" },
     { name = "spacy", specifier = ">=3.8.4" },
 ]
 
