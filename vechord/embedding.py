@@ -33,7 +33,7 @@ class GeminiEmbedding(BaseEmbedding):
     def __init__(self, model: str = "models/text-embedding-004", dim: int = 768):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
-            raise ValueError("GEMINI_API_KEY not set")
+            raise ValueError("env GEMINI_API_KEY not set")
 
         import google.generativeai as genai
 
@@ -55,7 +55,7 @@ class OpenAIEmbedding(BaseEmbedding):
     def __init__(self, model: str = "text-embedding-3-large", dim: int = 3072):
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
-            raise ValueError("OPENAI_API_KEY not set")
+            raise ValueError("env OPENAI_API_KEY not set")
 
         from openai import OpenAI
 

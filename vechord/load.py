@@ -35,7 +35,7 @@ class LocalLoader(BaseLoader):
                         data=data,
                         ext=ext,
                         digest=hashlib.sha256(data).hexdigest(),
-                        updated_at=datetime.fromtimestamp(os.path.getmtime(filepath)),
+                        updated_at=datetime.fromtimestamp(filepath.stat().st_mtime),
                     )
                 )
         return res

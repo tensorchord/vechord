@@ -1,6 +1,5 @@
 import base64
 import os
-import re
 import unicodedata
 from abc import ABC, abstractmethod
 from io import BytesIO
@@ -23,7 +22,7 @@ class BaseExtractor(ABC):
             text = self.extract_pdf(doc)
         else:
             logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
-        return re.sub(r"[\t\r\n\f\v]", " ", unicodedata.normalize("NFKC", text))
+        return unicodedata.normalize("NFKC", text)
 
 
 class SimpleExtractor(BaseExtractor):

@@ -9,11 +9,17 @@ class BaseSegmenter(ABC):
 
 
 class RegexSegmenter(BaseSegmenter):
-    def __init__(self, size: int, overlap: int, separator: str):
+    def __init__(
+        self,
+        size: int = 1000,
+        overlap: int = 200,
+        separator: str = r"\s{2,}",
+        concat: str = ". ",
+    ):
         self.size = size
         self.overlap = overlap
         self.separator = re.compile(separator)
-        self.concatenator = ". "
+        self.concatenator = concat
 
     def keep_overlap(self, pieces: list[str]) -> list[str]:
         length = 0
