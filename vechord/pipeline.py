@@ -2,6 +2,7 @@ from vechord.client import VectorChordClient
 from vechord.embedding import BaseEmbedding
 from vechord.extract import BaseExtractor
 from vechord.load import BaseLoader
+from vechord.log import logger
 from vechord.model import Chunk
 from vechord.segment import BaseSegmenter
 
@@ -24,6 +25,9 @@ class Pipeline:
     def run(self):
         self.client.create(self.emb.get_dim())
         for file in self.loader.load():
+            if self.client.is_file_exists(file):
+                logger.debug("file %s already exists", file.path)
+                continue
             text = self.extractor.extract(file)
             sentences = self.segmenter.segment(text)
             chunks = [

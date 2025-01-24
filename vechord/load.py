@@ -9,7 +9,7 @@ from vechord.model import File
 
 class BaseLoader(ABC):
     @abstractmethod
-    def load(self, path: Path) -> list[File]:
+    def load(self) -> list[File]:
         raise NotImplementedError
 
 

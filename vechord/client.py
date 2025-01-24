@@ -26,7 +26,7 @@ class VectorChordClient:
             self.conn.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.ns}_meta "
                 "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
-                "name TEXT, digest TEXT)"
+                "name TEXT, digest TEXT NOT NULL UNIQUE)"
             )
             self.conn.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.ns} "
@@ -43,6 +43,12 @@ class VectorChordClient:
             logger.info("rollback from the previous error")
             self.conn.rollback()
             raise err
+
+    def is_file_exists(self, file: File) -> bool:
+        cursor = self.conn.execute(
+            f"SELECT id FROM {self.ns}_meta WHERE digest = %s", (file.digest,)
+        )
+        return cursor.fetchone() is not None
 
     def insert_text(self, file: File, chunks: list[Chunk]):
         try:
