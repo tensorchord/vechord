@@ -22,6 +22,7 @@ class BaseExtractor(ABC):
             text = self.extract_pdf(doc)
         else:
             logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
+            text = ''
         return unicodedata.normalize("NFKC", text)
 
 
@@ -42,7 +43,7 @@ class GeminiExtractor(BaseExtractor):
     def __init__(self, model: str = "gemini-2.0-flash-exp"):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
-            raise ValueError("GEMINI_API_KEY not set")
+            raise ValueError("env GEMINI_API_KEY not set")
 
         import google.generativeai as genai
 
