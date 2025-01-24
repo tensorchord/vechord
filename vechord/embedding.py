@@ -48,7 +48,7 @@ class GeminiEmbedding(BaseEmbedding):
         res = self.client(
             content=text, model=self.model, output_dimensionality=self.dim
         )
-        return np.array(res.embedding)
+        return np.array(res["embedding"])
 
 
 class OpenAIEmbedding(BaseEmbedding):
@@ -66,7 +66,7 @@ class OpenAIEmbedding(BaseEmbedding):
     def get_dim(self) -> int:
         return self.dim
 
-    def embedding(self, text: str) -> np.ndarray:
+    def vectorize(self, text: str) -> np.ndarray:
         return np.array(
             self.client.embeddings.create(
                 model=self.model, input=text, dimensions=self.dim

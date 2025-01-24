@@ -1813,7 +1813,7 @@ wheels = [
 
 [[package]]
 name = "vechord"
-version = "0.1.0a2.dev1+g2bb5232.d20250121"
+version = "0.1.0a2.dev3+g2904430.d20250124"
 source = { editable = "." }
 dependencies = [
     { name = "en-core-web-sm" },
@@ -1831,18 +1831,21 @@ dependencies = [
     { name = "trio" },
 ]
 
+[package.optional-dependencies]
+gemini = [
+    { name = "google-generativeai" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pdm-backend" },
     { name = "ruff" },
 ]
-gemini = [
-    { name = "google-generativeai" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
+    { name = "google-generativeai", marker = "extra == 'gemini'", specifier = ">=0.8.4" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "msgspec", specifier = ">=0.19.0" },
     { name = "numpy", specifier = ">=2.0.2" },
@@ -1861,7 +1864,6 @@ dev = [
     { name = "pdm-backend", specifier = ">=2.4.3" },
     { name = "ruff", specifier = ">=0.9.1" },
 ]
-gemini = [{ name = "google-generativeai", specifier = ">=0.8.4" }]
 
 [[package]]
 name = "wasabi"

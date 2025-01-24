@@ -1,15 +1,16 @@
 import hashlib
 import os
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 
 from vechord.log import logger
-from vechord.model import File
+from vechord.model import Document
 
 
 class BaseLoader(ABC):
     @abstractmethod
-    def load(self) -> list[File]:
+    def load(self) -> list[Document]:
         raise NotImplementedError
 
 
@@ -18,21 +19,23 @@ class LocalLoader(BaseLoader):
         self.path = Path(path)
         self.include = set(ext.lower() for ext in include or [".txt"])
 
-    def load(self) -> list[File]:
+    def load(self) -> list[Document]:
         res = []
         for root, _dirs, files in os.walk(self.path):
             for file in files:
-                ext = Path(file).suffix.lower()
+                filepath = Path(root) / file
+                ext = filepath.suffix.lower()
                 if ext not in self.include:
                     logger.debug("exclude file %s", file)
                     continue
-                data = (Path(root) / file).read_bytes()
+                data = filepath.read_bytes()
                 res.append(
-                    File(
-                        path=str(Path(root) / file),
+                    Document(
+                        path=str(filepath),
                         data=data,
                         ext=ext,
                         digest=hashlib.sha256(data).hexdigest(),
+                        updated_at=datetime.fromtimestamp(os.path.getmtime(filepath)),
                     )
                 )
         return res

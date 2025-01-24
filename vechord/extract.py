@@ -8,21 +8,21 @@ from io import BytesIO
 import pypdfium2 as pdfium
 
 from vechord.log import logger
-from vechord.model import File
+from vechord.model import Document
 
 
 class BaseExtractor(ABC):
     @abstractmethod
-    def extract_pdf(self, file: File) -> str:
+    def extract_pdf(self, doc: Document) -> str:
         raise NotImplementedError
 
-    def extract(self, file: File) -> str:
-        if file.ext == ".txt":
-            text = file.data.decode("utf-8")
-        elif file.ext == ".pdf":
-            text = self.extract_pdf(file)
+    def extract(self, doc: Document) -> str:
+        if doc.ext == ".txt":
+            text = doc.data.decode("utf-8")
+        elif doc.ext == ".pdf":
+            text = self.extract_pdf(doc)
         else:
-            logger.warning("unsupported file type '%s' for %s", file.ext, file.path)
+            logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
         return re.sub(r"[\t\r\n\f\v]", " ", unicodedata.normalize("NFKC", text))
 
 
@@ -30,8 +30,8 @@ class SimpleExtractor(BaseExtractor):
     def __init__(self):
         pass
 
-    def extract_pdf(self, file: File) -> str:
-        pdf = pdfium.PdfDocument(file.data)
+    def extract_pdf(self, doc: Document) -> str:
+        pdf = pdfium.PdfDocument(doc.data)
         text = []
         for page in pdf:
             text.append(page.get_textpage().get_text_bounded())
@@ -53,8 +53,8 @@ class GeminiExtractor(BaseExtractor):
             "it appears, without any modifications, summarization, or interpretation"
         )
 
-    def extract_pdf(self, file: File) -> str:
-        pdf = pdfium.PdfDocument(file.data)
+    def extract_pdf(self, doc: Document) -> str:
+        pdf = pdfium.PdfDocument(doc.data)
         text = []
         for page in pdf:
             img = page.render(scale=2).to_pil()  # make the text clearer

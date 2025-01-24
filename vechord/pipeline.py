@@ -24,16 +24,16 @@ class Pipeline:
 
     def run(self):
         self.client.create(self.emb.get_dim())
-        for file in self.loader.load():
-            if self.client.is_file_exists(file):
-                logger.debug("file %s already exists", file.path)
+        for doc in self.loader.load():
+            if self.client.is_file_exists(doc):
+                logger.debug("file %s already exists", doc.path)
                 continue
-            text = self.extractor.extract(file)
+            text = self.extractor.extract(doc)
             sentences = self.segmenter.segment(text)
             chunks = [
                 Chunk(text=sent, vector=self.emb.vectorize(sent)) for sent in sentences
             ]
-            self.client.insert_text(file, chunks)
+            self.client.insert_text(doc, chunks)
 
     def query(self, query: str) -> list[str]:
         resp = self.client.query(Chunk(text=query, vector=self.emb.vectorize(query)))

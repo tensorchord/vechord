@@ -4,7 +4,7 @@ import psycopg
 from pgvector.psycopg import register_vector
 
 from vechord.log import logger
-from vechord.model import Chunk, File
+from vechord.model import Chunk, Document
 
 
 class VectorChordClient:
@@ -26,7 +26,7 @@ class VectorChordClient:
             self.conn.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.ns}_meta "
                 "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
-                "name TEXT, digest TEXT NOT NULL UNIQUE)"
+                "name TEXT, digest TEXT NOT NULL UNIQUE, updated_at TIMESTAMP)"
             )
             self.conn.execute(
                 f"CREATE TABLE IF NOT EXISTS {self.ns} "
@@ -44,17 +44,17 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def is_file_exists(self, file: File) -> bool:
+    def is_file_exists(self, doc: Document) -> bool:
         cursor = self.conn.execute(
-            f"SELECT id FROM {self.ns}_meta WHERE digest = %s", (file.digest,)
+            f"SELECT id FROM {self.ns}_meta WHERE digest = %s", (doc.digest,)
         )
         return cursor.fetchone() is not None
 
-    def insert_text(self, file: File, chunks: list[Chunk]):
+    def insert_text(self, doc: Document, chunks: list[Chunk]):
         try:
             cursor = self.conn.execute(
-                f"INSERT INTO {self.ns}_meta (name, digest) VALUES (%s, %s) RETURNING id",
-                (file.path, file.digest),
+                f"INSERT INTO {self.ns}_meta (name, digest, updated_at) VALUES (%s, %s, %s) RETURNING id",
+                (doc.path, doc.digest, doc.updated_at),
             )
             doc_id = cursor.fetchone()[0]
             for chunk in chunks:
@@ -62,7 +62,7 @@ class VectorChordClient:
                     f"INSERT INTO {self.ns} (doc_id, content, embedding) VALUES (%s, %s, %s)",
                     (doc_id, chunk.text, chunk.vector),
                 )
-            logger.debug("inserted %s sentences from file %s", len(chunks), file.path)
+            logger.debug("inserted %s sentences from file %s", len(chunks), doc.path)
         except psycopg.errors.DatabaseError as err:
             logger.error(err)
             logger.info("rollback from the previous error")

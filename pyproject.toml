@@ -22,6 +22,11 @@ dependencies = [
 [project.scripts]
 vechord = "vechord.main:main"
 
+[project.optional-dependencies]
+gemini = [
+    "google-generativeai>=0.8.4",
+]
+
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
@@ -30,9 +35,6 @@ build-backend = "pdm.backend"
 dev = [
     "pdm-backend>=2.4.3",
     "ruff>=0.9.1",
-]
-gemini = [
-    "google-generativeai>=0.8.4",
 ]
 
 [tool.ruff]
