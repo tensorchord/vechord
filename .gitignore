@@ -173,6 +173,8 @@ cython_debug/
 
 # test data
 data/
+*.txt
+*.jpeg
 
 # generated version file
 vechord/__version__.py
@@ -183,3 +185,6 @@ vechord/__version__.py
 # editor
 .vscode/
 .idea/
+
+# ini file
+*.ini

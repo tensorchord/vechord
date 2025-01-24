@@ -6,3 +6,4 @@ def build():
     install.conda(use_mamba=True)
     install.python()
     install.python_packages(name=["uv"])
+    shell("fish")
