@@ -11,14 +11,21 @@ dependencies = [
     "numpy>=2.0.2",
     "openai>=1.59.7",
     "pgvector>=0.3.6",
+    "pillow>=11.1.0",
     "psycopg[binary]>=3.2.3",
-    "pypdf>=5.1.0",
+    "pypdfium2>=4.30.1",
     "rich>=13.9.4",
     "spacy>=3.8.4",
+    "trio>=0.28.0",
 ]
 
 [project.scripts]
 vechord = "vechord.main:main"
+
+[project.optional-dependencies]
+gemini = [
+    "google-generativeai>=0.8.4",
+]
 
 [build-system]
 requires = ["pdm-backend"]
