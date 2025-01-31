@@ -34,7 +34,7 @@ class Pipeline:
             text = self.extractor.extract(doc)
             sentences = self.chunker.segment(text)
             chunks = [
-                Chunk(text=sent, vector=self.emb.vectorize_doc(sent))
+                Chunk(text=sent, vector=self.emb.vectorize_chunk(sent))
                 for sent in sentences
             ]
             self.client.insert_text(doc, chunks)

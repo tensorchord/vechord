@@ -15,11 +15,11 @@ class BaseEmbedding(ABC):
     emb_type = EmbeddingType.DENSE
 
     @abstractmethod
-    def vectorize_doc(self, text: str) -> np.ndarray:
+    def vectorize_chunk(self, text: str) -> np.ndarray:
         raise NotImplementedError
 
     def vectorize_query(self, text: str) -> np.ndarray:
-        return self.vectorize_doc(text)
+        return self.vectorize_chunk(text)
 
     @abstractmethod
     def get_dim(self) -> int:
@@ -38,7 +38,7 @@ class SpacyDenseEmbedding(BaseEmbedding):
     def get_dim(self) -> int:
         return self.dim
 
-    def vectorize_doc(self, text: str) -> np.ndarray:
+    def vectorize_chunk(self, text: str) -> np.ndarray:
         doc = self.nlp(text)
         return doc.vector
 
@@ -60,7 +60,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
     def get_dim(self) -> int:
         return self.dim
 
-    def vectorize_doc(self, text: str) -> np.ndarray:
+    def vectorize_chunk(self, text: str) -> np.ndarray:
         res = self.client(
             content=text, model=self.model, output_dimensionality=self.dim
         )
@@ -84,7 +84,7 @@ class OpenAIDenseEmbedding(BaseEmbedding):
     def get_dim(self) -> int:
         return self.dim
 
-    def vectorize_doc(self, text: str) -> np.ndarray:
+    def vectorize_chunk(self, text: str) -> np.ndarray:
         return np.array(
             self.client.embeddings.create(
                 model=self.model, input=text, dimensions=self.dim

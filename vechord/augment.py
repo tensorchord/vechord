@@ -46,7 +46,7 @@ class GeminiAugmenter(BaseAugmenter):
             res.append(response.text)
         return res
 
-    def augment_chunks(self, chunks: list[str]) -> list[str]:
+    def augment_context(self, chunks: list[str]) -> list[str]:
         prompt = (
             "Here is the chunk we want to situate within the whole document "
             "<chunk>{chunk}</chunk>"
@@ -56,7 +56,7 @@ class GeminiAugmenter(BaseAugmenter):
         )
         return self.augment(chunks, prompt)
 
-    def augment_queries(self, chunks: list[str]) -> list[str]:
+    def augment_query(self, chunks: list[str]) -> list[str]:
         prompt = (
             "Here is the chunk we want to ask questions about "
             "<chunk>{chunk}</chunk>"
