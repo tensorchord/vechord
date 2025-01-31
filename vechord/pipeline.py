@@ -1,3 +1,4 @@
+from vechord.augment import BaseAugmenter
 from vechord.chunk import BaseChunker
 from vechord.client import VectorChordClient
 from vechord.embedding import BaseEmbedding
@@ -5,7 +6,6 @@ from vechord.extract import BaseExtractor
 from vechord.load import BaseLoader
 from vechord.log import logger
 from vechord.model import Chunk
-from vechord.augment import BaseAugmenter
 
 
 class Pipeline:
