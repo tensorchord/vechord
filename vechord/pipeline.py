@@ -1,10 +1,11 @@
+from vechord.chunk import BaseChunker
 from vechord.client import VectorChordClient
 from vechord.embedding import BaseEmbedding
 from vechord.extract import BaseExtractor
 from vechord.load import BaseLoader
 from vechord.log import logger
 from vechord.model import Chunk
-from vechord.segment import BaseSegmenter
+from vechord.augment import BaseAugmenter
 
 
 class Pipeline:
@@ -13,13 +14,15 @@ class Pipeline:
         client: VectorChordClient,
         loader: BaseLoader,
         extractor: BaseExtractor,
-        segmenter: BaseSegmenter,
+        chunker: BaseChunker,
+        augmenter: BaseAugmenter,
         emb: BaseEmbedding,
     ):
         self.client = client
         self.loader = loader
         self.extractor = extractor
-        self.segmenter = segmenter
+        self.chunker = chunker
+        self.augmenter = augmenter
         self.emb = emb
 
     def run(self):
@@ -29,12 +32,15 @@ class Pipeline:
                 logger.debug("file %s already exists", doc.path)
                 continue
             text = self.extractor.extract(doc)
-            sentences = self.segmenter.segment(text)
+            sentences = self.chunker.segment(text)
             chunks = [
-                Chunk(text=sent, vector=self.emb.vectorize(sent)) for sent in sentences
+                Chunk(text=sent, vector=self.emb.vectorize_doc(sent))
+                for sent in sentences
             ]
             self.client.insert_text(doc, chunks)
 
     def query(self, query: str) -> list[str]:
-        resp = self.client.query(Chunk(text=query, vector=self.emb.vectorize(query)))
+        resp = self.client.query(
+            Chunk(text=query, vector=self.emb.vectorize_query(query))
+        )
         return resp

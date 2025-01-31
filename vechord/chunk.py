@@ -2,16 +2,16 @@ import re
 from abc import ABC, abstractmethod
 
 
-class BaseSegmenter(ABC):
+class BaseChunker(ABC):
     @abstractmethod
     def segment(self, text: str) -> list[str]:
         raise NotImplementedError
 
 
-class RegexSegmenter(BaseSegmenter):
+class RegexChunker(BaseChunker):
     def __init__(
         self,
-        size: int = 1000,
+        size: int = 1536,
         overlap: int = 200,
         separator: str = r"\s{2,}",
         concat: str = ". ",
@@ -69,11 +69,24 @@ class RegexSegmenter(BaseSegmenter):
         return [*chunks, remaining] if remaining else chunks
 
 
-class SpacySegmenter(BaseSegmenter):
+class SpacyChunker(BaseChunker):
     def __init__(self):
+        """A semantic sentence Chunker based on SpaCy."""
         import spacy
 
         self.nlp = spacy.load("en_core_web_sm", enable=["parser", "tok2vec"])
 
     def segment(self, text: str) -> list[str]:
         return [sent.text for sent in self.nlp(text).sents]
+
+
+class WordLlamaChunker(BaseChunker):
+    def __init__(self, size: int = 1536):
+        """A semantic chunker based on WordLlama."""
+        from wordllama import WordLlama
+
+        self.model = WordLlama.load()
+        self.size = size
+
+    def segment(self, text: str) -> list[str]:
+        return self.model.split(text, target_size=self.size)

@@ -22,7 +22,7 @@ class BaseExtractor(ABC):
             text = self.extract_pdf(doc)
         else:
             logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
-            text = ''
+            text = ""
         return unicodedata.normalize("NFKC", text)
 
 
@@ -49,8 +49,8 @@ class GeminiExtractor(BaseExtractor):
 
         self.model = genai.GenerativeModel(model)
         self.prompt = (
-            "Extract all the text from the following document and return it exactly as "
-            "it appears, without any modifications, summarization, or interpretation"
+            "Extract all the text from the following document and return it exactly as"
+            " it appears, without any modifications, summarization, or interpretation"
         )
 
     def extract_pdf(self, doc: Document) -> str:
