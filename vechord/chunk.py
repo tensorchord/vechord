@@ -7,6 +7,10 @@ class BaseChunker(ABC):
     def segment(self, text: str) -> list[str]:
         raise NotImplementedError
 
+    @abstractmethod
+    def name(self) -> str:
+        raise NotImplementedError
+
 
 class RegexChunker(BaseChunker):
     def __init__(
@@ -20,6 +24,9 @@ class RegexChunker(BaseChunker):
         self.overlap = overlap
         self.separator = re.compile(separator)
         self.concatenator = concat
+
+    def name(self) -> str:
+        return f"regex_{self.size}_{self.overlap}"
 
     def keep_overlap(self, pieces: list[str]) -> list[str]:
         length = 0
@@ -76,6 +83,9 @@ class SpacyChunker(BaseChunker):
 
         self.nlp = spacy.load("en_core_web_sm", enable=["parser", "tok2vec"])
 
+    def name(self) -> str:
+        return "spacy"
+
     def segment(self, text: str) -> list[str]:
         return [sent.text for sent in self.nlp(text).sents]
 
@@ -87,6 +97,9 @@ class WordLlamaChunker(BaseChunker):
 
         self.model = WordLlama.load()
         self.size = size
+
+    def name(self) -> str:
+        return f"wordllama_{self.size}"
 
     def segment(self, text: str) -> list[str]:
         return self.model.split(text, target_size=self.size)

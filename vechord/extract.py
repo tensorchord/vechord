@@ -12,6 +12,10 @@ from vechord.model import Document
 
 class BaseExtractor(ABC):
     @abstractmethod
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def extract_pdf(self, doc: Document) -> str:
         raise NotImplementedError
 
@@ -29,6 +33,9 @@ class BaseExtractor(ABC):
 class SimpleExtractor(BaseExtractor):
     def __init__(self):
         pass
+
+    def name(self) -> str:
+        return "basic"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)
@@ -52,6 +59,9 @@ class GeminiExtractor(BaseExtractor):
             "Extract all the text from the following document and return it exactly as"
             " it appears, without any modifications, summarization, or interpretation"
         )
+
+    def name(self) -> str:
+        return "gemini"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)

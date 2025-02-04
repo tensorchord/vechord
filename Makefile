@@ -18,3 +18,6 @@ publish: build
 
 test:
 	@uv run pytest -v tests
+
+sync:
+	@uv sync --all-extras

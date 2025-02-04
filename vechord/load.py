@@ -13,11 +13,18 @@ class BaseLoader(ABC):
     def load(self) -> list[Document]:
         raise NotImplementedError
 
+    @abstractmethod
+    def name(self) -> str:
+        raise NotImplementedError
+
 
 class LocalLoader(BaseLoader):
     def __init__(self, path: str, include: list[str] | None = None):
         self.path = Path(path)
         self.include = set(ext.lower() for ext in include or [".txt"])
+
+    def name(self) -> str:
+        return f"local(path={self.path}, include={self.include})"
 
     def load(self) -> list[Document]:
         res = []
@@ -36,6 +43,7 @@ class LocalLoader(BaseLoader):
                         ext=ext,
                         digest=hashlib.sha256(data).hexdigest(),
                         updated_at=datetime.fromtimestamp(filepath.stat().st_mtime),
+                        identifier=self.info(),
                     )
                 )
         return res

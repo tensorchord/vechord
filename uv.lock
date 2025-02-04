@@ -1910,9 +1910,10 @@ wheels = [
 
 [[package]]
 name = "vechord"
-version = "0.1.0a2.dev2+ge024e6e.d20250131"
+version = "0.1.0a2.dev5+gf8fbfd0.d20250204"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "msgspec" },
     { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "numpy", version = "2.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -1948,6 +1949,7 @@ dev = [
 requires-dist = [
     { name = "en-core-web-sm", marker = "extra == 'spacy'", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "google-generativeai", marker = "extra == 'gemini'", specifier = ">=0.8.4" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "msgspec", specifier = ">=0.19.0" },
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.60.2" },
