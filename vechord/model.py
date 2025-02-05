@@ -1,8 +1,16 @@
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 import msgspec
 from numpy import ndarray
+
+
+class ChunkType(Enum):
+    CHUNK = "chunk"
+    CONTEXT = "context"
+    QUERY = "query"
+    SUMMARY = "summary"
 
 
 class Entity(msgspec.Struct, kw_only=True, frozen=True):
@@ -16,7 +24,7 @@ class Document(msgspec.Struct, kw_only=True):
     digest: str
     data: bytes
     updated_at: datetime = msgspec.field(default_factory=datetime.now)
-    identifier: str = ""
+    source: str = ""
 
 
 class SparseEmbedding(msgspec.Struct, kw_only=True, frozen=True):
@@ -32,13 +40,14 @@ class Keywords(msgspec.Struct, kw_only=True):
 
 class Chunk(msgspec.Struct, kw_only=True):
     text: str
-    vector: ndarray
+    chunk_type: ChunkType = ChunkType.CHUNK
+    vector: Optional[ndarray] = None
     sparse: Optional[SparseEmbedding] = None
     keywords: Optional[Keywords] = None
     entities: list[Entity] = []
 
 
-class RetrivedChunk(msgspec.Struct, kw_only=True):
+class RetrievedChunk(msgspec.Struct, kw_only=True):
     uid: str
     text: str
     score: float

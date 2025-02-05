@@ -24,7 +24,7 @@ class LocalLoader(BaseLoader):
         self.include = set(ext.lower() for ext in include or [".txt"])
 
     def name(self) -> str:
-        return f"local(path={self.path}, include={self.include})"
+        return "local"
 
     def load(self) -> list[Document]:
         res = []
@@ -43,7 +43,21 @@ class LocalLoader(BaseLoader):
                         ext=ext,
                         digest=hashlib.sha256(data).hexdigest(),
                         updated_at=datetime.fromtimestamp(filepath.stat().st_mtime),
-                        identifier=self.info(),
+                        source=self.name(),
                     )
                 )
         return res
+
+
+class S3Loader(BaseLoader):
+    def __init__(self, bucket: str, prefix: str, include: list[str] | None = None):
+        self.bucket = bucket
+        self.prefix = prefix
+        self.include = set(ext.lower() for ext in include or [".txt"])
+
+    def name(self) -> str:
+        return f"s3_{self.bucket}_{self.prefix}"
+
+    def load(self) -> list[Document]:
+        # TODO: implement S3 loader
+        pass

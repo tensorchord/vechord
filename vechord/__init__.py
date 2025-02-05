@@ -1,4 +1,5 @@
-from vechord.chunk import RegexChunker, SpacyChunker
+from vechord.augment import GeminiAugmenter
+from vechord.chunk import RegexChunker, SpacyChunker, WordLlamaChunker
 from vechord.client import VectorChordClient
 from vechord.embedding import (
     GeminiDenseEmbedding,
@@ -13,6 +14,7 @@ from vechord.pipeline import Pipeline
 __all__ = [
     "Chunk",
     "Document",
+    "GeminiAugmenter",
     "GeminiDenseEmbedding",
     "GeminiExtractor",
     "LocalLoader",
@@ -23,4 +25,5 @@ __all__ = [
     "SpacyChunker",
     "SpacyDenseEmbedding",
     "VectorChordClient",
+    "WordLlamaChunker",
 ]

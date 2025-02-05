@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 
-from vechord.model import RetrivedChunk
+from vechord.model import RetrievedChunk
 
 
 class BaseReranker(ABC):
@@ -25,13 +25,15 @@ class ReciprocalRankFusion:
     def get_score(self, rank: int) -> float:
         return 1 / (self.k + rank)
 
-    def fuse(self, retrived_chunks: list[list[RetrivedChunk]]) -> list[RetrivedChunk]:
+    def fuse(
+        self, retrieved_chunks: list[list[RetrievedChunk]]
+    ) -> list[RetrievedChunk]:
         chunk_score: dict[str, float] = defaultdict(float)
-        chunk_map: dict[str, RetrivedChunk] = {}
-        for retrives in retrived_chunks:
-            for i, retrive in enumerate(retrives):
-                chunk_score[retrive.uid] += self.get_score(i)
-                chunk_map[retrive.uid] = retrive
+        chunk_map: dict[str, RetrievedChunk] = {}
+        for chunks in retrieved_chunks:
+            for i, chunk in enumerate(chunks):
+                chunk_score[chunk.uid] += self.get_score(i)
+                chunk_map[chunk.uid] = chunk
 
         sorted_uid = sorted(chunk_score, key=lambda x: chunk_score[x], reverse=True)
         return [chunk_map[uid] for uid in sorted_uid]

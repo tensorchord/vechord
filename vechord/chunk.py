@@ -26,7 +26,7 @@ class RegexChunker(BaseChunker):
         self.concatenator = concat
 
     def name(self) -> str:
-        return f"regex_{self.size}_{self.overlap}"
+        return f"regex_chunk_{self.size}_{self.overlap}"
 
     def keep_overlap(self, pieces: list[str]) -> list[str]:
         length = 0
@@ -77,14 +77,15 @@ class RegexChunker(BaseChunker):
 
 
 class SpacyChunker(BaseChunker):
-    def __init__(self):
+    def __init__(self, model: str = "en_core_web_sm"):
         """A semantic sentence Chunker based on SpaCy."""
         import spacy
 
-        self.nlp = spacy.load("en_core_web_sm", enable=["parser", "tok2vec"])
+        self.model = model
+        self.nlp = spacy.load(model, enable=["parser", "tok2vec"])
 
     def name(self) -> str:
-        return "spacy"
+        return f"spacy_chunk_{self.model}"
 
     def segment(self, text: str) -> list[str]:
         return [sent.text for sent in self.nlp(text).sents]
@@ -99,7 +100,7 @@ class WordLlamaChunker(BaseChunker):
         self.size = size
 
     def name(self) -> str:
-        return f"wordllama_{self.size}"
+        return f"wordllama_chunk_{self.size}"
 
     def segment(self, text: str) -> list[str]:
         return self.model.split(text, target_size=self.size)

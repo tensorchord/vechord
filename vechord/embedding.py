@@ -42,9 +42,10 @@ class SpacyDenseEmbedding(BaseEmbedding):
 
         self.nlp = spacy.load(model, enable=["tok2vec"])
         self.dim = dim
+        self.model = model
 
     def name(self) -> str:
-        return f"spacy_{self.model}"
+        return f"spacy_emb_{self.model}"
 
     def get_dim(self) -> int:
         return self.dim
@@ -76,7 +77,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
         return VecType.DENSE
 
     def name(self) -> str:
-        return f"gemini_{self.model[7:].replace('-', '_')}_{self.dim}"
+        return f"gemini_emb_{self.model}_{self.dim}"
 
     def vectorize_chunk(self, text: str) -> np.ndarray:
         res = self.client(
@@ -104,7 +105,7 @@ class OpenAIDenseEmbedding(BaseEmbedding):
         return VecType.DENSE
 
     def name(self) -> str:
-        return f"openai_{self.model.replace('-', '_')}_{self.dim}"
+        return f"openai_emb_{self.model}_{self.dim}"
 
     def vectorize_chunk(self, text: str) -> np.ndarray:
         return np.array(
@@ -131,7 +132,7 @@ class SpladePPSparseEmbedding(BaseEmbedding):
         return VecType.SPARSE
 
     def name(self) -> str:
-        return f"spladepp_{self.dim}"
+        return f"spladepp_emb_{self.dim}"
 
     def vectorize_chunk(self, text: str | list[str]) -> list[SparseEmbedding]:
         resp = self.client.post("/inference", json=text)

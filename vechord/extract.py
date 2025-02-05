@@ -35,7 +35,7 @@ class SimpleExtractor(BaseExtractor):
         pass
 
     def name(self) -> str:
-        return "basic"
+        return "basic_extractor"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)
@@ -61,7 +61,7 @@ class GeminiExtractor(BaseExtractor):
         )
 
     def name(self) -> str:
-        return "gemini"
+        return f"gemini_extractor_{self.model.model_name}"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)
