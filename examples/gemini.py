@@ -6,7 +6,7 @@ from vechord import (
     GeminiExtractor,
     LocalLoader,
     Pipeline,
-    SpacyChunker,
+    WordLlamaChunker,
     VectorChordClient,
 )
 
@@ -17,7 +17,7 @@ if __name__ == "__main__":
         ),
         loader=LocalLoader("data", include=[".pdf"]),
         extractor=GeminiExtractor(),
-        chunker=SpacyChunker(),
+        chunker=WordLlamaChunker(),
         emb=GeminiDenseEmbedding(),
         augmenter=GeminiAugmenter(),
     )

@@ -66,6 +66,10 @@ class Pipeline:
                 continue
             self.insert(doc)
 
+    def clear(self):
+        for doc in self.loader.load():
+            self.client.delete(doc)
+
     def query(self, query: str) -> list[str]:
         resp = self.client.query(Chunk(text=query))
         return resp
