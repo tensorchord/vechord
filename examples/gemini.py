@@ -6,8 +6,8 @@ from vechord import (
     GeminiExtractor,
     LocalLoader,
     Pipeline,
-    WordLlamaChunker,
     VectorChordClient,
+    WordLlamaChunker,
 )
 
 if __name__ == "__main__":
