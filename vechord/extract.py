@@ -12,6 +12,10 @@ from vechord.model import Document
 
 class BaseExtractor(ABC):
     @abstractmethod
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
     def extract_pdf(self, doc: Document) -> str:
         raise NotImplementedError
 
@@ -22,13 +26,16 @@ class BaseExtractor(ABC):
             text = self.extract_pdf(doc)
         else:
             logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
-            text = ''
+            text = ""
         return unicodedata.normalize("NFKC", text)
 
 
 class SimpleExtractor(BaseExtractor):
     def __init__(self):
         pass
+
+    def name(self) -> str:
+        return "basic_extractor"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)
@@ -49,9 +56,12 @@ class GeminiExtractor(BaseExtractor):
 
         self.model = genai.GenerativeModel(model)
         self.prompt = (
-            "Extract all the text from the following document and return it exactly as "
-            "it appears, without any modifications, summarization, or interpretation"
+            "Extract all the text from the following document and return it exactly as"
+            " it appears, without any modifications, summarization, or interpretation"
         )
+
+    def name(self) -> str:
+        return f"gemini_extractor_{self.model.model_name}"
 
     def extract_pdf(self, doc: Document) -> str:
         pdf = pdfium.PdfDocument(doc.data)

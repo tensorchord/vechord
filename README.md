@@ -27,3 +27,14 @@ timeline
               : Filter
         Rerank: ColBERT
 ```
+
+## Development
+
+```bash
+docker run --rm -d -e POSTGRES_PASSWORD=postgres -p 5432:5432 tensorchord/vchord-postgres:pg17-v0.2.0
+envd up
+# inside the envd env, sync all the dependencies
+make sync
+# format the code
+make format
+```

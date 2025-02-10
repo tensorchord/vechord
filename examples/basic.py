@@ -4,8 +4,8 @@ from vechord import (
     LocalLoader,
     Pipeline,
     SimpleExtractor,
-    SpacyEmbedding,
-    SpacySegmenter,
+    SpacyChunker,
+    SpacyDenseEmbedding,
     VectorChordClient,
 )
 
@@ -16,8 +16,8 @@ if __name__ == "__main__":
         ),
         loader=LocalLoader("data", include=[".pdf"]),
         extractor=SimpleExtractor(),
-        segmenter=SpacySegmenter(),
-        emb=SpacyEmbedding(),
+        chunker=SpacyChunker(),
+        emb=SpacyDenseEmbedding(),
     )
     pipe.run()
 
