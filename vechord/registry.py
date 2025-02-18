@@ -70,7 +70,7 @@ class Table(Storage):
         return ((name, type_to_psql(typ)) for name, typ in hints.items())
 
     @classmethod
-    def vertor_index(cls) -> Optional[str]:
+    def vector_index(cls) -> Optional[str]:
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if get_origin(typ) is Annotated and typ.__origin__ is Vector:
                 return name
@@ -114,7 +114,7 @@ class VechordRegistry:
         for cls in klasses:
             if issubclass(cls, Table):
                 self.client.create_table_if_not_exists(cls.name(), cls.table_schema())
-                if vector_index := cls.vertor_index():
+                if vector_index := cls.vector_index():
                     self.client.create_vector_index(cls.name(), vector_index)
                     logger.debug(
                         "create vector index for %s.%s", cls.name(), vector_index
