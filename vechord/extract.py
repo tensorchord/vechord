@@ -47,7 +47,7 @@ class SimpleExtractor(BaseExtractor):
 
 
 class GeminiExtractor(BaseExtractor):
-    def __init__(self, model: str = "gemini-2.0-flash-exp"):
+    def __init__(self, model: str = "gemini-2.0-flash"):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
             raise ValueError("env GEMINI_API_KEY not set")

@@ -1,5 +1,4 @@
 import hashlib
-from time import perf_counter
 from typing import Optional
 
 import psycopg
@@ -8,7 +7,7 @@ from pgvector.psycopg import register_vector
 from vechord.augment import BaseAugmenter
 from vechord.embedding import BaseEmbedding, VecType
 from vechord.log import logger
-from vechord.model import Chunk, Document
+from vechord.model import Chunk, Document, RetrievedChunk
 
 PSQL_NAMING_LIMIT = 64
 
@@ -24,6 +23,40 @@ class VectorChordClient:
         self.conn = psycopg.connect(url, autocommit=autocommit)
         self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
         register_vector(self.conn)
+
+    def create_table_if_not_exists(self, name: str, schema: list[tuple[str, str]]):
+        cursor = self.conn.cursor()
+        columns = ", ".join(f"{col} {typ}" for col, typ in schema)
+        with self.conn.transaction():
+            cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.ns}_{name} ({columns});")
+
+    def create_vector_index(self, name: str, column: str):
+        config = """
+        residual_quantization = true
+        [build.internal]
+        lists = [1]
+        spherical_centroids = false
+        """
+        self.conn.execute(
+            f"CREATE INDEX IF NOT EXISTS {self.ns}_{name}_{column}_vec_idx ON "
+            f"{self.ns}_{name} USING vchordrq ({column} vector_l2_ops) WITH "
+            f"(options = $${config}$$);"
+        )
+
+    def select(self, name: str, columns: list[str]):
+        columns = ", ".join(columns)
+        cursor = self.conn.execute(f"SELECT {columns} FROM {self.ns}_{name};")
+        return [row for row in cursor.fetchall()]
+
+    def insert(self, name: str, values: dict):
+        columns = ", ".join(values.keys())
+        placeholders = ", ".join(f"%({col})s" for col in values)
+        self.conn.execute(
+            f"INSERT INTO {self.ns}_{name} ({columns}) VALUES ({placeholders});", values
+        )
+
+    def drop(self, name: str):
+        self.conn.execute(f"DROP TABLE IF EXISTS {self.ns}_{name};")
 
     def _get_emb_table_name(self, emb: BaseEmbedding) -> str:
         return f"{self.ns}_emb_{hash_table_suffix(self.chunk_table + emb.name())}"
@@ -62,16 +95,10 @@ class VectorChordClient:
                     "source TEXT, data BYTEA);"
                 )
                 cursor.execute(
-                    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'chunk_type') THEN "
-                    "CREATE TYPE chunk_type AS ENUM ('chunk', 'context', 'query', 'summary');"
-                    "END IF; END $$;"
-                )
-                cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {self.chunk_table} "
                     "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
-                    f"doc_id INT, seq_id INT, content TEXT, type CHUNK_TYPE);"
+                    f"doc_id INT, seq_id INT, content TEXT);"
                     f"COMMENT ON TABLE {self.chunk_table} IS 'from {self.identifier}';"
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {self.chunk_table}_doc_seq_unique_idx ON {self.chunk_table} (doc_id, seq_id);"
                 )
                 for emb in self.embs:
                     if emb.vec_type() != VecType.DENSE:
@@ -166,7 +193,7 @@ class VectorChordClient:
                 return False
         return True
 
-    def insert(self, doc: Document, chunks: list[Chunk]):
+    def insert_doc(self, doc: Document, chunks: list[Chunk]):
         try:
             cursor = self.conn.cursor()
             with self.conn.transaction():
@@ -176,10 +203,10 @@ class VectorChordClient:
                 )
                 doc_id = cursor.fetchone()[0]
 
-                for i, chunk in enumerate(chunks):
+                for chunk in chunks:
                     cursor.execute(
-                        f"INSERT INTO {self.chunk_table} (doc_id, seq_id, content, type) VALUES (%s, %s, %s, %s) ON CONFLICT (doc_id, seq_id) DO UPDATE SET content = EXCLUDED.content RETURNING id",
-                        (doc_id, i, chunk.text, chunk.chunk_type.value),
+                        f"INSERT INTO {self.chunk_table} (doc_id, seq_id, content) VALUES (%s, %s, %s) RETURNING id",
+                        (doc_id, chunk.seq_id, chunk.text),
                     )
                     chunk_id = cursor.fetchone()[0]
                     for emb in self.embs:
@@ -219,18 +246,15 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def query(self, query: Chunk, topk: int = 10) -> list[str]:
+    def query(self, query: Chunk, topk: int = 10) -> list[RetrievedChunk]:
         dense_emb = next(emb for emb in self.embs if emb.vec_type() == VecType.DENSE)
         assert dense_emb, "no dense embedding found"
         emb_table = self._get_emb_table_name(dense_emb)
-        start = perf_counter()
         try:
             cursor = self.conn.execute(
-                "WITH ranked AS ("
-                "SELECT c.id, c.content, e.embedding, "
-                "ROW_NUMBER() OVER (ORDER BY e.embedding <-> %s) as ranking "
-                f"FROM {self.chunk_table} c JOIN {emb_table} e ON c.id = e.id)"
-                "SELECT id, content FROM ranked WHERE ranking <= %s",
+                "SELECT c.id, c.content, e.embedding <-> %s as score "
+                f"FROM {self.chunk_table} c JOIN {emb_table} e ON c.id = e.id "
+                "ORDER BY score LIMIT %s",
                 (dense_emb.vectorize_query(query.text), topk),
             )
             res = cursor.fetchall()
@@ -239,5 +263,4 @@ class VectorChordClient:
             logger.info("rollback from the previous error")
             self.conn.rollback()
             raise err
-        logger.debug("query time: %s", perf_counter() - start)
-        return [row[1] for row in res]
+        return [RetrievedChunk(uid=row[0], text=row[1], score=row[2]) for row in res]

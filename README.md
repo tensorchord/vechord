@@ -26,7 +26,15 @@ timeline
               : Full Text Search
               : Filter
         Rerank: ColBERT
+    section Evaluation
+        Metric: MAP
+              : Recall
+              : NDCG
 ```
+
+## Examples
+
+- [decorator.py](./examples/decorator.py): the most flexible way to use the library
 
 ## Development
 

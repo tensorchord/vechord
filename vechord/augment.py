@@ -29,6 +29,7 @@ class BaseAugmenter(ABC):
 
 
 class GeminiAugmenter(BaseAugmenter):
+    # Context caching is only available for stable models with fixed versions
     def __init__(self, model: str = "models/gemini-1.5-flash-001", ttl_sec: int = 600):
         """Gemini Augmenter with cache.
 

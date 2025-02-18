@@ -80,7 +80,7 @@ class QueryResource:
         if query is None:
             return
         res = self.pipeline.query(query=query.text)
-        resp.media = res
+        resp.data = msgspec.json.encode(res)
 
 
 def create_web_app(pipeline: Pipeline) -> App:

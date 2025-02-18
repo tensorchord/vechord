@@ -1530,6 +1530,42 @@ wheels = [
 ]
 
 [[package]]
+name = "pytrec-eval-terrier"
+version = "0.5.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/13/b75f85c76d781005916406fa97e500c8675e990251f542e3fa45874c7092/pytrec_eval-terrier-0.5.6.tar.gz", hash = "sha256:b7259691bb5639bc22fb38d9e1ae04abde456951e5a38bec65251880e550a550", size = 16800 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/21/6f/d42b681e821da0410a195ab0aaea689075023dd64cec52d3dfc3d4a44919/pytrec_eval_terrier-0.5.6-cp310-cp310-macosx_11_0_x86_64.whl", hash = "sha256:27c9422ce3d29e63819733332ef6c91547cee19d3b8cd5d8617fbbfd65c50fa4", size = 72281 },
+    { url = "https://files.pythonhosted.org/packages/de/72/b7a1d3d2c1dc6e36f53be9849d24da1cdb384d6ef25be31ca3a712b27239/pytrec_eval_terrier-0.5.6-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:73c51d6961ff1eb684f3c181ca620f95f88ad9d302f24be17f5bfed8e63f0c51", size = 287423 },
+    { url = "https://files.pythonhosted.org/packages/8b/f4/8966afb3f6a17f4276c347bd31b25c66b322dce83302122faa32a71cef32/pytrec_eval_terrier-0.5.6-cp310-cp310-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:30630ada5ee69b544c86991f7f65b6c2c7b4644f163b93dcd129a531160f7a3d", size = 280252 },
+    { url = "https://files.pythonhosted.org/packages/68/88/f444427462a0ce97642314557f8377648e5858dd3f2302402b196b411a73/pytrec_eval_terrier-0.5.6-cp310-cp310-musllinux_1_1_i686.whl", hash = "sha256:8f671fdd68bae99872c5f119140d483d15533642932b18a923ed74c37be22ff9", size = 855470 },
+    { url = "https://files.pythonhosted.org/packages/4b/3e/9c540550b8f3e02cd1cef56dca550f64e8c7eee73173cec5d1197d9d9149/pytrec_eval_terrier-0.5.6-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:83d331c0f684c7f189b76d4c82a02d86c22a91111755693dac947a1d98a6c85d", size = 817354 },
+    { url = "https://files.pythonhosted.org/packages/ec/58/4273cc634ab43a02b0cc65ff81ccc899c5ffee381fb14b77075cd007ae6a/pytrec_eval_terrier-0.5.6-cp310-cp310-win_amd64.whl", hash = "sha256:45b67e9bc72c02b129adcc53a71772601d3b842c3925dba0ec7737781d44fea9", size = 56918 },
+    { url = "https://files.pythonhosted.org/packages/7e/eb/edde6136f109864b53e577f8c84bba57c7c1632d577efe609d6a1cf7d02b/pytrec_eval_terrier-0.5.6-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:4bad8adda45a78020fb1830e408a9fb3eed66e9c278c5663b4551d1706bc86fe", size = 138469 },
+    { url = "https://files.pythonhosted.org/packages/ce/be/a50baa537bbcd4e437a0a064bfd083d858e74eee7b91ecc17514576dd240/pytrec_eval_terrier-0.5.6-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:188698ee56f5c8d4bb9c145df6cc7683e9e9a2fcd59f1566cd55a0af919f9168", size = 287850 },
+    { url = "https://files.pythonhosted.org/packages/e6/40/da3825ef41dea65f0288bffd784d3ea0a28f43d579d571266c2c95dad39c/pytrec_eval_terrier-0.5.6-cp311-cp311-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:e49488c872cce020a8102b67a03f942081fd8e733edd7de6acc24648be20b7d4", size = 280665 },
+    { url = "https://files.pythonhosted.org/packages/bf/16/5d9efc3c3f7a1c71e3cdba6762614523582fff4abd3de864029035952aa0/pytrec_eval_terrier-0.5.6-cp311-cp311-musllinux_1_1_i686.whl", hash = "sha256:c9ff5b4b922bc219119fbcbc51c23749f68d2b60f48820aa4a168c0b4d76811b", size = 856338 },
+    { url = "https://files.pythonhosted.org/packages/7c/61/7659ebdb0606f33077cecc5d2a1c413d3a0c3f37b3ea4492b1c2618c9b96/pytrec_eval_terrier-0.5.6-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:e03ce85524bf443fd42a139fd9cb527af6620aa4d7cb4a3eca1536634e64ee40", size = 818493 },
+    { url = "https://files.pythonhosted.org/packages/2f/08/adfc5044950563310b049ab4d94f907229f036432a1fe769beea0399095c/pytrec_eval_terrier-0.5.6-cp311-cp311-win_amd64.whl", hash = "sha256:1a9975d526906cd73b031fd78b4d29d3de624e77d5ee74c12c86c5bdc43d1243", size = 56917 },
+    { url = "https://files.pythonhosted.org/packages/dd/91/3b9a222a24138c024bcfb7c09cdb45400e5f075f571d68a9ca1e13618012/pytrec_eval_terrier-0.5.6-cp312-cp312-macosx_10_9_universal2.whl", hash = "sha256:1af6f4e5de018ca8c50ead65ebcbf33dc86c22cbc7caad502f0b94e177dd0023", size = 138772 },
+    { url = "https://files.pythonhosted.org/packages/54/67/e970bc5d4912e723d390f44055280901e1f0ac94e7e9b9c3472cdeaf1d25/pytrec_eval_terrier-0.5.6-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2d3b42d27050a45648c52d48dc4ea5b5f536f23e8027e8d9a2c5eafaabebe418", size = 288459 },
+    { url = "https://files.pythonhosted.org/packages/0e/3a/2cacf4895af5c4621fb488d369a2989b5f96d2fb02017eb69b8e560e61ed/pytrec_eval_terrier-0.5.6-cp312-cp312-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:2129b4c26f14987e33c3b21b29376614622dd69e5668e0b9049bf6571f3f280e", size = 280772 },
+    { url = "https://files.pythonhosted.org/packages/29/ad/5b7740068f72545d5de9bdf41852d7f4f6876adf2b8808c717050ae63c9d/pytrec_eval_terrier-0.5.6-cp312-cp312-musllinux_1_1_i686.whl", hash = "sha256:11562b5f2ca6168fef7753393e0be7ce43ef31bcc815d9f9df74de70c10a7bbc", size = 856107 },
+    { url = "https://files.pythonhosted.org/packages/1d/74/f4a3d41c1390cbfe5b6fa54385aa23c22a17d182587275676d4fb4c470c1/pytrec_eval_terrier-0.5.6-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:05cfeccfff601d9797c09b4f44f33d5d02f2cdbc6af334859c53c2e46225803b", size = 818767 },
+    { url = "https://files.pythonhosted.org/packages/66/8a/b4ea10f8f35eeab9ad90ffcfaec4b6fc5c823888211f66706f9f70259003/pytrec_eval_terrier-0.5.6-cp312-cp312-win_amd64.whl", hash = "sha256:93f2cc705008f7338e2f424b282e4e012d58f8d1937e48a8e19277c9bc6aebf0", size = 56997 },
+    { url = "https://files.pythonhosted.org/packages/9a/d4/cc74e3870be88091eeb89201c0e70626f9e3e9d795a908472b42b785fe01/pytrec_eval_terrier-0.5.6-cp39-cp39-macosx_11_0_x86_64.whl", hash = "sha256:ac02dfe92ab9e7399b7129d3e2199cdfb6c9f0b015cb6942479f168f37363230", size = 72293 },
+    { url = "https://files.pythonhosted.org/packages/90/b2/faa4fdd5801522df280a3677e84fc78bd9070611650f83d4b943980bbece/pytrec_eval_terrier-0.5.6-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2090c204b47d2e4c713daaa79031b36a880a950222a6e79b4ac2b78d7d72d015", size = 287194 },
+    { url = "https://files.pythonhosted.org/packages/f6/a5/d9e38ad56f6acbfe0e97c09a78bd355345ad3fb36050df74f3f83ce80f23/pytrec_eval_terrier-0.5.6-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:822b4dda406cab796c5c81537e6d607ff7232d29006bc62792ed0c3dd7a33302", size = 280058 },
+    { url = "https://files.pythonhosted.org/packages/ee/3f/29da3664545b6667135cf951729b2a2f6fceda07683719fb7f4afb3565ae/pytrec_eval_terrier-0.5.6-cp39-cp39-musllinux_1_1_i686.whl", hash = "sha256:b49c00ba1921042f5d5404ee949b92e62128f8b98a836664ad520874ca832e71", size = 855222 },
+    { url = "https://files.pythonhosted.org/packages/36/ec/b8c5bff1482bb9bc86d131ea8bf97dcfa3b19d9415a67c53e581307d155c/pytrec_eval_terrier-0.5.6-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:e515818669ae95c1fef99ba5638509d8f31437dc0d992954895b59ddc7e0d7e7", size = 816957 },
+    { url = "https://files.pythonhosted.org/packages/0e/92/d4935c69544288d3253847f839b65b8c84aea6a7ce49c5beb3a8f34f0b19/pytrec_eval_terrier-0.5.6-cp39-cp39-win_amd64.whl", hash = "sha256:47cb6c985f0ff8dc02210d117638e762cdf81bb4e3fba8bb266f50a53967cf55", size = 56923 },
+    { url = "https://files.pythonhosted.org/packages/a1/de/ccf58aca79909eddd38ee9f19a978da0d1d60c0e51bdb7ab641b0477a576/pytrec_eval_terrier-0.5.6-pp310-pypy310_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:84ac972995f65ac2cac5c54a542e91297bab3a313e838d4d5f930b6212047d14", size = 287047 },
+    { url = "https://files.pythonhosted.org/packages/46/ea/f2bbb327ad7e98786dc1c868e97d7ae6d84e685ad08d07510a3ad18f55b5/pytrec_eval_terrier-0.5.6-pp310-pypy310_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:0b9432832e6852e77caea1f9c30cd0175f1fa3d9c5713909cf54ae23fb8fec78", size = 278431 },
+    { url = "https://files.pythonhosted.org/packages/f3/92/f39e36a1330256e1ddf369f9d1434f43b311ea6dc06684072abff77405d7/pytrec_eval_terrier-0.5.6-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:30e8755b6c55984673a7a74483f626a6ccd4fe588264cb5ca58880cce7e4e16f", size = 286003 },
+    { url = "https://files.pythonhosted.org/packages/6f/72/cb77f226ce32e2464cb7e386a9c912ed6ece176dfa4fd98a720d5a083ed8/pytrec_eval_terrier-0.5.6-pp39-pypy39_pp73-manylinux_2_5_i686.manylinux1_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:c025c20b3c5e582d94e4b8bb38eb116ac4700ef9f1bab9b03f4e095dc8be9e3a", size = 277329 },
+]
+
+[[package]]
 name = "pyyaml"
 version = "6.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1970,6 +2006,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pypdfium2" },
+    { name = "pytrec-eval-terrier" },
     { name = "rich" },
 ]
 
@@ -2007,6 +2044,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=11.1.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2.3" },
     { name = "pypdfium2", specifier = ">=4.30.1" },
+    { name = "pytrec-eval-terrier", specifier = ">=0.5.6" },
     { name = "rich", specifier = ">=13.9.4" },
     { name = "spacy", marker = "extra == 'spacy'", specifier = ">=3.8.4" },
     { name = "wordllama", marker = "extra == 'wordllama'", specifier = ">=0.3.8.post20" },
