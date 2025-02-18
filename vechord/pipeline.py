@@ -56,7 +56,7 @@ class Pipeline:
             ]
             summary = Chunk(text=self.augmenter.summarize_doc())
             chunks = [Chunk(text=sent, seq_id=i) for i, sent in enumerate(sentences)]
-            self.client.insert_doc(doc, chunks + contexts + queries + summary)
+            self.client.insert_doc(doc, chunks + contexts + queries + [summary])
         else:
             chunks = [Chunk(text=sent) for sent in sentences]
             self.client.insert_doc(doc, chunks)
