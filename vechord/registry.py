@@ -1,7 +1,20 @@
 from collections import defaultdict
 from datetime import datetime
 from functools import wraps
-from typing import Annotated, Any, Optional, Union, get_args, get_origin, get_type_hints
+from typing import (
+    Annotated,
+    Any,
+    Generic,
+    Optional,
+    Protocol,
+    Type,
+    TypeVar,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 from uuid import UUID
 
 import msgspec
@@ -11,13 +24,93 @@ from vechord.client import VectorChordClient
 from vechord.log import logger
 
 
-class Vector:
-    dim: int
-    vec: Optional[np.ndarray] = None
+@runtime_checkable
+class VechordType(Protocol):
+    @classmethod
+    def schema(cls) -> str:
+        pass
 
 
-class PrimaryKeyAutoIncrement:
-    pass
+class VectorMeta(type):
+    def __getitem__(self, dim: int):
+        if not isinstance(dim, int) or dim <= 0:
+            raise ValueError(
+                f"dim must be a positive integer, not `{type(dim)}({dim})`"
+            )
+        return create_vector_type(dim)
+
+
+class Vector(Generic[TypeVar("T")], metaclass=VectorMeta):
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError("Use Vector[dim] to create a vector type")
+
+    @classmethod
+    def schema(cls) -> str:
+        raise NotImplementedError("Should be implemented by the subclass: Vector[dim]")
+
+
+def create_vector_type(dim: int) -> Type[Vector]:
+    class SpecificVector(Vector):
+        nonlocal dim
+        _dim: int = dim
+
+        def __init__(self, vec: list[float] | np.ndarray):
+            if isinstance(vec, np.ndarray):
+                if vec.shape != (dim,):
+                    raise ValueError(f"expected shape ({dim},), got {vec.shape}")
+            elif isinstance(vec, list):
+                if len(vec) != dim:
+                    raise ValueError(f"expected length {dim}, got {len(vec)}")
+            else:
+                raise ValueError("expected list or np.ndarray")
+            self.vec = vec
+
+        @classmethod
+        def schema(cls):
+            return f"VECTOR({cls._dim})"
+
+    SpecificVector.__name__ = f"Vector[{dim}]"
+    return SpecificVector
+
+
+class ForeignKeyMeta(type):
+    def __getitem__(self, ref):
+        return create_foreign_key_type(ref)
+
+
+class ForeignKey(Generic[TypeVar("K")], metaclass=ForeignKeyMeta):
+    def __init__(self, *args, **kwargs):
+        raise NotImplementedError("Use ForeignKey[ref] to create a foreign key type")
+
+    @classmethod
+    def schema(cls) -> str:
+        raise NotImplementedError(
+            "Should be implemented by the subclass: ForeignKey[ref]"
+        )
+
+
+def create_foreign_key_type(ref) -> Type[ForeignKey]:
+    class SpecificForeignKey(ForeignKey):
+        nonlocal ref
+        _ref = ref
+
+        def __init__(self, value):
+            self.value = value
+
+        @classmethod
+        def schema(cls):
+            ref_cls = cls._ref.__objclass__.__name__.lower()
+            ref_val = cls._ref.__name__
+            return f"REFERENCES {{namespace}}_{ref_cls}({ref_val})"
+
+    SpecificForeignKey.__name__ = f"ForeignKey[{ref}]"
+    return SpecificForeignKey
+
+
+class PrimaryKeyAutoIncrease:
+    @classmethod
+    def schema(cls) -> str:
+        return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
 
 
 TYPE_TO_PSQL = {
@@ -28,8 +121,6 @@ TYPE_TO_PSQL = {
     bool: "BOOLEAN",
     UUID: "UUID",
     datetime: "TIMESTAMP",
-    Vector: "VECTOR",
-    PrimaryKeyAutoIncrement: "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY",
 }
 
 
@@ -44,10 +135,13 @@ def type_to_psql(typ):
     if get_origin(typ) is Annotated:
         meta = typ.__metadata__
         origin = typ.__origin__
-        if origin is Vector:
-            assert len(meta) == 1, "only accept dim"
-            return f"VECTOR({meta[0]})"
-        raise ValueError(f"unsupported annotated type {typ}")
+        schema = [type_to_psql(origin)]
+        for m in meta:
+            if issubclass(m, ForeignKey):
+                schema.append(m.schema())
+        return " ".join(schema)
+    if isinstance(typ, VechordType):
+        return typ.schema()
     if typ in TYPE_TO_PSQL:
         return TYPE_TO_PSQL[typ]
     raise ValueError(f"unsupported type {typ}")
@@ -190,10 +284,6 @@ class VechordRegistry:
             return wrapper
 
         return decorator
-
-    def run(self, funcs: list[RunFunction]):
-        for func in funcs:
-            func.func(*func.args) if func.args else func.func()
 
     def clear_storage(self):
         for table in self.tables:

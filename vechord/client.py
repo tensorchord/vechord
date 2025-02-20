@@ -26,7 +26,9 @@ class VectorChordClient:
 
     def create_table_if_not_exists(self, name: str, schema: list[tuple[str, str]]):
         cursor = self.conn.cursor()
-        columns = ", ".join(f"{col} {typ}" for col, typ in schema)
+        columns = ", ".join(
+            f"{col} {typ.format(namespace=self.ns)}" for col, typ in schema
+        )
         with self.conn.transaction():
             cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.ns}_{name} ({columns});")
 
@@ -56,7 +58,7 @@ class VectorChordClient:
         )
 
     def drop(self, name: str):
-        self.conn.execute(f"DROP TABLE IF EXISTS {self.ns}_{name};")
+        self.conn.execute(f"DROP TABLE IF EXISTS {self.ns}_{name} CASCADE;")
 
     def _get_emb_table_name(self, emb: BaseEmbedding) -> str:
         return f"{self.ns}_emb_{hash_table_suffix(self.chunk_table + emb.name())}"

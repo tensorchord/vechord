@@ -3,8 +3,8 @@ from typing import Annotated, Optional
 
 from vechord import LocalLoader, RegexChunker, SimpleExtractor, SpacyDenseEmbedding
 from vechord.registry import (
-    PrimaryKeyAutoIncrement,
-    RunFunction,
+    ForeignKey,
+    PrimaryKeyAutoIncrease,
     Table,
     VechordRegistry,
     Vector,
@@ -12,7 +12,7 @@ from vechord.registry import (
 
 
 class Document(Table, kw_only=True):
-    uid: Optional[PrimaryKeyAutoIncrement] = None
+    uid: Optional[PrimaryKeyAutoIncrease] = None
     digest: str
     filename: str
     text: str
@@ -20,16 +20,15 @@ class Document(Table, kw_only=True):
 
 
 class Chunk(Table, kw_only=True):
-    uid: Optional[PrimaryKeyAutoIncrement] = None
-    doc_uid: int
+    uid: Optional[PrimaryKeyAutoIncrease] = None
+    doc_uid: Annotated[int, ForeignKey[Document.uid]]
     seq_id: int
     text: str
 
 
 class DenseEmbedding(Table, kw_only=True):
-    uid: Optional[PrimaryKeyAutoIncrement] = None
-    chunk_uid: int
-    vector: Annotated[Vector, 96]
+    chunk_uid: Annotated[int, ForeignKey[Chunk.uid]]
+    vector: Vector[96]
 
 
 vr = VechordRegistry("decorator", "postgresql://postgres:postgres@172.17.0.1:5432/")
@@ -67,11 +66,7 @@ def embed_chunk(uid: int, text: str) -> DenseEmbedding:
     return DenseEmbedding(chunk_uid=uid, vector=vector)
 
 
-vr.run(
-    [
-        RunFunction(load_from_dir, ["./data"]),
-        RunFunction(split_document),
-        RunFunction(embed_chunk),
-    ]
-)
+load_from_dir("./data")
+split_document()
+embed_chunk()
 vr.clear_storage()
