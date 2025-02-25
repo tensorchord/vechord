@@ -1,6 +1,7 @@
 import hashlib
-from typing import Optional
+from typing import Any, Optional
 
+import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
@@ -45,9 +46,20 @@ class VectorChordClient:
             f"(options = $${config}$$);"
         )
 
-    def select(self, name: str, columns: list[str]):
+    def select(
+        self,
+        name: str,
+        columns: list[str],
+        key: Optional[str] = None,
+        value: Optional[Any] = None,
+    ):
         columns = ", ".join(columns)
-        cursor = self.conn.execute(f"SELECT {columns} FROM {self.ns}_{name};")
+        if key and value:
+            cursor = self.conn.execute(
+                f"SELECT {columns} FROM {self.ns}_{name} WHERE {key} = %s;", (value,)
+            )
+        else:
+            cursor = self.conn.execute(f"SELECT {columns} FROM {self.ns}_{name};")
         return [row for row in cursor.fetchall()]
 
     def insert(self, name: str, values: dict):
@@ -56,6 +68,25 @@ class VectorChordClient:
         self.conn.execute(
             f"INSERT INTO {self.ns}_{name} ({columns}) VALUES ({placeholders});", values
         )
+
+    def delete(self, name: str, values: dict):
+        condition = " AND ".join(f"{col} = %({col})s" for col in values)
+        self.conn.execute(f"DELETE FROM {self.ns}_{name} WHERE {condition};", values)
+
+    def query_vec(
+        self,
+        name: str,
+        vec_col: str,
+        vec: np.ndarray,
+        return_fields: list[str],
+        topk: int = 10,
+    ):
+        columns = ", ".join(return_fields)
+        cursor = self.conn.execute(
+            f"SELECT {columns} FROM {self.ns}_{name} ORDER BY {vec_col} <-> %s LIMIT %s;",
+            (vec, topk),
+        )
+        return [row for row in cursor.fetchall()]
 
     def drop(self, name: str):
         self.conn.execute(f"DROP TABLE IF EXISTS {self.ns}_{name} CASCADE;")
@@ -226,7 +257,7 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def delete(self, doc: Document):
+    def delete_doc(self, doc: Document):
         try:
             cursor = self.conn.cursor()
             with self.conn.transaction():
@@ -248,7 +279,7 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def query(self, query: Chunk, topk: int = 10) -> list[RetrievedChunk]:
+    def query_chunk(self, query: Chunk, topk: int = 10) -> list[RetrievedChunk]:
         dense_emb = next(emb for emb in self.embs if emb.vec_type() == VecType.DENSE)
         assert dense_emb, "no dense embedding found"
         emb_table = self._get_emb_table_name(dense_emb)

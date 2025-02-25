@@ -72,10 +72,10 @@ class Pipeline:
 
     def clear(self):
         for doc in self.loader.load():
-            self.client.delete(doc)
+            self.client.delete_doc(doc)
 
     def query(self, query: str, topk: int = 10) -> list[RetrievedChunk]:
-        resp = self.client.query(Chunk(text=query), topk)
+        resp = self.client.query_chunk(Chunk(text=query), topk)
         return resp
 
     def eval(self, evaluator: BaseEvaluator, topk: int = 10):

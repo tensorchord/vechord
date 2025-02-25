@@ -35,6 +35,20 @@ class BaseEvaluator(ABC):
             avg[k] /= num
         return avg
 
+    def evaluate_one(
+        self,
+        chunk_id: int,
+        resp_ids: list[int],
+        measures: list[str] = ("map", "ndcg", "recall"),
+    ):
+        query_relevance = {"0": {str(chunk_id): 1}}
+        evaluator = pytrec_eval.RelevanceEvaluator(
+            query_relevance=query_relevance, measures=measures
+        )
+        res = {"0": {str(r): 1 / (i + 1) for i, r in enumerate(resp_ids)}}
+        evaluation = evaluator.evaluate(res)
+        return evaluation["0"]
+
     @abstractmethod
     def name(self) -> str:
         raise NotImplementedError

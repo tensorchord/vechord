@@ -166,7 +166,7 @@ class Table(Storage):
     @classmethod
     def vector_index(cls) -> Optional[str]:
         for name, typ in get_type_hints(cls, include_extras=True).items():
-            if get_origin(typ) is Annotated and typ.__origin__ is Vector:
+            if issubclass(typ.__class__, VectorMeta):
                 return name
 
     def todict(self) -> dict[str, Any]:
@@ -236,6 +236,55 @@ class VechordRegistry:
             self.client.insert(cls.name(), obj.todict())
         elif issubclass(cls, Memory):
             self.memory[cls.name()].append(obj)
+        else:
+            raise ValueError(f"unsupported class {cls}")
+
+    def select_from_storage(self, cls: type[Storage], key: str, value: Any):
+        if issubclass(cls, Memory):
+            objs = self.memory[cls.name()]
+            return [obj for obj in objs if getattr(obj, key) == value]
+        elif issubclass(cls, Table):
+            fields = cls.fields()
+            res = self.client.select(cls.name(), fields, key, value)
+            return [cls(**{k: v for k, v in zip(fields, r)}) for r in res]
+        else:
+            raise ValueError(f"unsupported class {cls}")
+
+    def search(
+        self,
+        cls: type[Storage],
+        vec,
+        topk: int = 10,
+        return_vector: bool = False,
+    ):
+        if issubclass(cls, Table):
+            fields = list(cls.fields())
+            vec_col = cls.vector_index()
+            addition = {}
+            if not return_vector:
+                fields.remove(vec_col)
+                addition[vec_col] = None
+            res = self.client.query_vec(
+                cls.name(),
+                vec_col,
+                vec,
+                topk=topk,
+                return_fields=fields,
+            )
+            return [cls(**{k: v for k, v in zip(fields, r)}, **addition) for r in res]
+        elif issubclass(cls, Memory):
+            raise ValueError(f"query is not supported for {cls}")
+        else:
+            raise ValueError(f"unsupported class {cls}")
+
+    def remove_from_storage(self, cls: type[Storage], obj: Storage):
+        if not isinstance(obj, cls):
+            raise ValueError(f"expected {cls}, got {type(obj)}")
+
+        if issubclass(cls, Table):
+            self.client.delete(cls.name(), obj.todict())
+        elif issubclass(cls, Memory):
+            self.memory[cls.name()].remove(obj)
         else:
             raise ValueError(f"unsupported class {cls}")
 

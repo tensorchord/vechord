@@ -68,7 +68,7 @@ class DocumentResource:
         doc: Optional[Document] = validate_request(Document, req, resp)
         if doc is None:
             return
-        self.pipeline.client.delete(doc=doc)
+        self.pipeline.client.delete_doc(doc=doc)
 
 
 class QueryResource:
