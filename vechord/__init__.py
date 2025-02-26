@@ -11,22 +11,36 @@ from vechord.extract import GeminiExtractor, SimpleExtractor
 from vechord.load import LocalLoader
 from vechord.model import Chunk, Document
 from vechord.pipeline import Pipeline
+from vechord.registry import (
+    ForeignKey,
+    Memory,
+    PrimaryKeyAutoIncrease,
+    Table,
+    VechordRegistry,
+    Vector,
+)
 
 __all__ = [
     "Chunk",
     "Document",
+    "ForeignKey",
     "GeminiAugmenter",
     "GeminiChunker",
     "GeminiDenseEmbedding",
     "GeminiEvaluator",
     "GeminiExtractor",
     "LocalLoader",
+    "Memory",
     "OpenAIDenseEmbedding",
     "Pipeline",
+    "PrimaryKeyAutoIncrease",
     "RegexChunker",
     "SimpleExtractor",
     "SpacyChunker",
     "SpacyDenseEmbedding",
+    "Table",
+    "VechordRegistry",
+    "Vector",
     "VectorChordClient",
     "WordLlamaChunker",
 ]

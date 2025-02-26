@@ -4,7 +4,9 @@ from functools import wraps
 from typing import (
     Annotated,
     Any,
+    Generator,
     Generic,
+    Iterator,
     Optional,
     Protocol,
     Type,
@@ -204,9 +206,13 @@ class Memory(Storage):
         return (getattr(self, f) for f in select_fields if f in fields)
 
 
-class RunFunction(msgspec.Struct):
-    func: callable
-    args: Optional[list] = []
+def is_list_of_type(typ) -> bool:
+    origin = get_origin(typ)
+    if origin is None:
+        return False
+    if origin is list:
+        return True
+    return issubclass(origin, Iterator) or issubclass(origin, Generator)
 
 
 class VechordRegistry:
@@ -227,7 +233,7 @@ class VechordRegistry:
                     )
                 self.tables.append(cls)
             elif issubclass(cls, Memory):
-                self.memory[cls.name()] = cls
+                pass
             else:
                 raise ValueError(f"unsupported class {cls}")
 
@@ -340,9 +346,7 @@ class VechordRegistry:
             hints = get_type_hints(func)
             returns = hints.pop("return", None)
             columns = hints.keys()
-            return_type = (
-                returns.__args__[0] if get_origin(returns) is list else returns
-            )
+            return_type = returns.__args__[0] if is_list_of_type(returns) else returns
             if return_type is not output:
                 raise ValueError(f"expected {output}, got {return_type} in {func}")
 
@@ -360,9 +364,10 @@ class VechordRegistry:
                 if output is None:
                     for arg in arguments:
                         func(*arg, **kwargs)
+                    return
 
                 count = 0
-                if get_origin(returns) is list:
+                if is_list_of_type(returns):
                     for arg in arguments:
                         for ret in func(*arg):
                             self.dump_to_storage(output, ret)

@@ -35,8 +35,8 @@ class BaseEvaluator(ABC):
             avg[k] /= num
         return avg
 
+    @staticmethod
     def evaluate_one(
-        self,
         chunk_id: int,
         resp_ids: list[int],
         measures: list[str] = ("map", "ndcg", "recall"),
