@@ -101,7 +101,7 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
         def schema(cls):
             ref_cls = cls._ref.__objclass__.__name__.lower()
             ref_val = cls._ref.__name__
-            return f"REFERENCES {{namespace}}_{ref_cls}({ref_val})"
+            return f"REFERENCES {{namespace}}_{ref_cls}({ref_val}) ON DELETE CASCADE"
 
     SpecificForeignKey.__name__ = f"ForeignKey[{ref}]"
     return SpecificForeignKey
@@ -156,6 +156,12 @@ class Storage(msgspec.Struct):
     def fields(cls) -> list[str]:
         return cls.__struct_fields__
 
+    @classmethod
+    def partial_init(cls, **kwargs):
+        fields = cls.fields()
+        args = dict(zip(fields, [msgspec.UNSET] * len(fields))) | kwargs
+        return cls(**args)
+
 
 class Table(Storage):
     @classmethod
@@ -178,14 +184,20 @@ class Table(Storage):
         res = {}
         for k, d in zip(fields, defaults):
             v = getattr(self, k)
-            if d is msgspec.NODEFAULT or v != d:
+            if (d is msgspec.NODEFAULT or v != d) and v is not msgspec.UNSET:
                 res[k] = v
         return res
 
 
 class Memory(Storage):
     def todict(self) -> dict[str, Any]:
-        return {k: getattr(self, k) for k in self.fields()}
+        res = {}
+        for field in self.fields():
+            value = getattr(self, field)
+            if value is msgspec.UNSET:
+                continue
+            res[field] = value
+        return res
 
     def select(self, select_fields: list[str]):
         fields = self.fields()
@@ -239,14 +251,34 @@ class VechordRegistry:
         else:
             raise ValueError(f"unsupported class {cls}")
 
-    def select_from_storage(self, cls: type[Storage], key: str, value: Any):
+    def select_by(
+        self, cls: type[Storage], obj: Storage, fields: Optional[list[str]] = None
+    ):
+        if not isinstance(obj, cls):
+            raise ValueError(f"expected {cls}, got {type(obj)}")
+
+        cls_fields = cls.fields()
+        if fields is not None:
+            if any(f not in cls_fields for f in fields):
+                raise ValueError(f"unknown fields {fields}")
+        else:
+            fields = cls_fields
+
+        kvs = obj.todict()
         if issubclass(cls, Memory):
             objs = self.memory[cls.name()]
-            return [obj for obj in objs if getattr(obj, key) == value]
+            if kvs:
+                return [
+                    obj
+                    for obj in objs
+                    if all(getattr(obj, key) == value for key, value in kvs.items())
+                ]
+            else:
+                return objs
         elif issubclass(cls, Table):
-            fields = cls.fields()
-            res = self.client.select(cls.name(), fields, key, value)
-            return [cls(**{k: v for k, v in zip(fields, r)}) for r in res]
+            res = self.client.select(cls.name(), fields, kvs)
+            missing = dict(zip(cls_fields, [msgspec.UNSET] * len(cls_fields)))
+            return [cls(**(missing | {k: v for k, v in zip(fields, r)})) for r in res]
         else:
             raise ValueError(f"unsupported class {cls}")
 
@@ -277,14 +309,26 @@ class VechordRegistry:
         else:
             raise ValueError(f"unsupported class {cls}")
 
-    def remove_from_storage(self, cls: type[Storage], obj: Storage):
+    def remove_by(self, cls: type[Storage], obj):
         if not isinstance(obj, cls):
             raise ValueError(f"expected {cls}, got {type(obj)}")
 
+        kvs = obj.todict()
+        if not kvs:
+            raise ValueError("empty object")
         if issubclass(cls, Table):
-            self.client.delete(cls.name(), obj.todict())
+            self.client.delete(cls.name(), kvs)
         elif issubclass(cls, Memory):
-            self.memory[cls.name()].remove(obj)
+            lst = self.memory[cls.name()]
+            index = []
+            kvs = obj.todict()
+            for i, item in enumerate(lst):
+                if all(
+                    getattr(item, key, None) == value for (key, value) in kvs.items()
+                ):
+                    index.append(i)
+            for i in reversed(index):
+                lst.pop(i)
         else:
             raise ValueError(f"unsupported class {cls}")
 

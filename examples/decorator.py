@@ -72,16 +72,26 @@ def split_document(uid: int, text: str) -> list[Chunk]:
     ]
 
 
-@vr.inject(input=Chunk, output=ContextChunk)
-def context_embedding(uid: int, doc_uid: int, text: str) -> ContextChunk:
-    doc: Document = vr.select_from_storage(Document, uid, doc_uid)[0]
-    augmentor = GeminiAugmenter()
-    augmentor.reset(doc.text)
-    context = augmentor.augment_context([text])[0]
-    context_chunk = "\n".join([context, text])
-    return ContextChunk(
-        chunk_uid=uid, text=context_chunk, vector=dense.vectorize_chunk(context_chunk)
+@vr.inject(input=Document, output=ContextChunk)
+def context_embedding(uid: int, text: str) -> list[ContextChunk]:
+    chunks: list[Chunk] = vr.select_by(
+        Chunk, Chunk.partial_init(doc_uid=uid), fields=["uid", "text"]
     )
+    augmentor = GeminiAugmenter()
+    augmentor.reset(text)
+    context_chunks = [
+        f"{context}\n{origin}"
+        for (context, origin) in zip(
+            augmentor.augment_context([c.text for c in chunks]),
+            [c.text for c in chunks],
+        )
+    ]
+    return [
+        ContextChunk(
+            chunk_uid=chunk_uid, text=augmented, vector=dense.vectorize_chunk(augmented)
+        )
+        for (chunk_uid, augmented) in zip([c.uid for c in chunks], context_chunks)
+    ]
 
 
 def query_chunk(query: str) -> list[Chunk]:
@@ -109,7 +119,7 @@ def query_context_chunk(query: str) -> list[ContextChunk]:
 @vr.inject(input=Chunk)
 def evaluate(uid: int, doc_uid: int, text: str):
     evaluator = GeminiEvaluator()
-    doc: Document = vr.select_from_storage(Document, doc_uid)[0]
+    doc: Document = vr.select_by(Document, Document.partial_init(uid=doc_uid))[0]
     query = evaluator.produce_query(doc.text, text)
     retrieved = query_chunk(query)
     score = evaluator.evaluate_one(uid, [r.uid for r in retrieved])
@@ -126,4 +136,4 @@ if __name__ == "__main__":
     chunks = query_chunk("vector search")
     print(chunks)
 
-    vr.clear_storage()
+    # vr.clear_storage()

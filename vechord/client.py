@@ -50,13 +50,13 @@ class VectorChordClient:
         self,
         name: str,
         columns: list[str],
-        key: Optional[str] = None,
-        value: Optional[Any] = None,
+        kvs: Optional[dict[str, Any]] = None,
     ):
         columns = ", ".join(columns)
-        if key and value:
+        if kvs:
+            condition = " AND ".join(f"{col} = %({col})s" for col in kvs)
             cursor = self.conn.execute(
-                f"SELECT {columns} FROM {self.ns}_{name} WHERE {key} = %s;", (value,)
+                f"SELECT {columns} FROM {self.ns}_{name} WHERE {condition};", kvs
             )
         else:
             cursor = self.conn.execute(f"SELECT {columns} FROM {self.ns}_{name};")
@@ -69,9 +69,12 @@ class VectorChordClient:
             f"INSERT INTO {self.ns}_{name} ({columns}) VALUES ({placeholders});", values
         )
 
-    def delete(self, name: str, values: dict):
-        condition = " AND ".join(f"{col} = %({col})s" for col in values)
-        self.conn.execute(f"DELETE FROM {self.ns}_{name} WHERE {condition};", values)
+    def delete(self, name: str, kvs: dict):
+        if kvs:
+            condition = " AND ".join(f"{col} = %({col})s" for col in kvs)
+            self.conn.execute(f"DELETE FROM {self.ns}_{name} WHERE {condition};", kvs)
+        else:
+            self.conn.execute(f"DELETE FROM {self.ns}_{name};")
 
     def query_vec(
         self,
