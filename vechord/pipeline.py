@@ -63,7 +63,6 @@ class Pipeline:
 
     def run(self):
         self.client.create()
-        doc_digests = []  # noqa  TODO: remove outdated docs
         for doc in self.loader.load():
             if self.client.is_file_exists(doc):
                 logger.debug("file %s already exists", doc.path)

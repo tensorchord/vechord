@@ -121,7 +121,9 @@ def evaluate(cid: str, vector: Vector[768]) -> Evaluation:
     docs: list[Corpus] = vr.search(Corpus, vector, topk=TOP_K)
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in docs])
     return Evaluation(
-        map=score.get("map"), ndcg=score.get("ndcg"), recall=score.get("recall_10")
+        map=score.get("map"),
+        ndcg=score.get("ndcg"),
+        recall=score.get(f"recall_{TOP_K}"),
     )
 
 

@@ -34,7 +34,7 @@ timeline
 
 ## Examples
 
-- [decorator.py](./examples/decorator.py): the most flexible way to use the library
+- [beir.py](./examples/beir.py): the most flexible way to use the library (loading, indexing, querying and evaluation)
 
 ## Development
 

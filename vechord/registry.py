@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 from functools import wraps
+from types import UnionType
 from typing import (
     Annotated,
     Any,
@@ -127,12 +128,17 @@ TYPE_TO_PSQL = {
 
 
 def is_optional_type(typ) -> bool:
-    return get_origin(typ) is Union and type(None) in get_args(typ)
+    return (get_origin(typ) is Union or get_origin(typ) is UnionType) and type(
+        None
+    ) in get_args(typ)
 
 
 def type_to_psql(typ):
     if is_optional_type(typ):
-        typ = get_args(typ)[0]
+        for arg in get_args(typ):
+            if arg is not type(None):
+                typ = arg
+                break
 
     if get_origin(typ) is Annotated:
         meta = typ.__metadata__

@@ -37,11 +37,11 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def evaluate_one(
-        chunk_id: int,
+        truth_id: int,
         resp_ids: list[int],
         measures: list[str] = ("map", "ndcg", "recall"),
     ):
-        query_relevance = {"0": {str(chunk_id): 1}}
+        query_relevance = {"0": {str(truth_id): 1}}
         evaluator = pytrec_eval.RelevanceEvaluator(
             query_relevance=query_relevance, measures=measures
         )
