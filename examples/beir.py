@@ -9,7 +9,8 @@ import rich.progress
 
 from vechord.embedding import GeminiDenseEmbedding
 from vechord.evaluate import BaseEvaluator
-from vechord.registry import Memory, Table, VechordRegistry, Vector
+from vechord.registry import VechordRegistry
+from vechord.spec import Table, Vector
 
 BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip"
 DEFAULT_DATASET = "scifact"
@@ -58,14 +59,14 @@ class Query(Table):
     vector: Vector[768]
 
 
-class Evaluation(Memory):
+class Evaluation(msgspec.Struct):
     map: float
     ndcg: float
     recall: float
 
 
 vr = VechordRegistry(DEFAULT_DATASET, "postgresql://postgres:postgres@172.17.0.1:5432/")
-vr.register([Corpus, Query, Evaluation])
+vr.register([Corpus, Query])
 emb = GeminiDenseEmbedding()
 
 
@@ -116,7 +117,7 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
             )
 
 
-@vr.inject(input=Query, output=Evaluation)
+@vr.inject(input=Query)
 def evaluate(cid: str, vector: Vector[768]) -> Evaluation:
     docs: list[Corpus] = vr.search(Corpus, vector, topk=TOP_K)
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in docs])
@@ -134,7 +135,6 @@ if __name__ == "__main__":
     load_corpus(DEFAULT_DATASET, save_dir)
     load_query(DEFAULT_DATASET, save_dir)
 
-    evaluate()
-    res: list[Evaluation] = vr.select_by(Evaluation, Evaluation.partial_init())
+    res: list[Evaluation] = evaluate()
     print("ndcg", sum(r.ndcg for r in res) / len(res))
     print("recall@10", sum(r.recall for r in res) / len(res))

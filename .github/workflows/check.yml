@@ -22,5 +22,6 @@ jobs:
         enable-cache: true
         ignore-nothing-to-cache: true
     - name: Lint
-      run: |
-        make lint
+      run: make lint
+    - name: Test
+      run: make test

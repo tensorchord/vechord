@@ -11,14 +11,8 @@ from vechord.extract import GeminiExtractor, SimpleExtractor
 from vechord.load import LocalLoader
 from vechord.model import Chunk, Document
 from vechord.pipeline import Pipeline
-from vechord.registry import (
-    ForeignKey,
-    Memory,
-    PrimaryKeyAutoIncrease,
-    Table,
-    VechordRegistry,
-    Vector,
-)
+from vechord.registry import VechordRegistry
+from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
 __all__ = [
     "Chunk",

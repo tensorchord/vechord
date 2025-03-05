@@ -6,12 +6,11 @@ import httpx
 from vechord.chunk import RegexChunker
 from vechord.embedding import GeminiDenseEmbedding
 from vechord.evaluate import GeminiEvaluator
-from vechord.registry import (
+from vechord.registry import VechordRegistry
+from vechord.spec import (
     ForeignKey,
-    Memory,
     PrimaryKeyAutoIncrease,
     Table,
-    VechordRegistry,
     Vector,
 )
 
@@ -52,7 +51,7 @@ class Query(Table, kw_only=True):
     vector: Vector[768]
 
 
-class Evaluation(Memory):
+class Evaluation:
     map: float
     ndcg: float
     recall: float
@@ -83,7 +82,7 @@ def create_query(uid: int, text: str) -> Query:
     return Query(cid=uid, text=query, vector=emb.vectorize_chunk(query))
 
 
-@vr.inject(input=Query, output=Evaluation)
+@vr.inject(input=Query)
 def evalute(cid: int, vector: Vector[768]) -> Evaluation:
     chunks: list[Chunk] = vr.search(Chunk, vector, topk=TOP_K)
     score = evaluator.evaluate_one(cid, [chunk.uid for chunk in chunks])
@@ -95,8 +94,7 @@ def evalute(cid: int, vector: Vector[768]) -> Evaluation:
 if __name__ == "__main__":
     segment_essay()
     create_query()
-    evalute()
 
-    res: list[Evaluation] = vr.select_by(Evaluation, Evaluation.partial_init())
+    res: list[Evaluation] = evalute()
     print("ndcg", sum(r.ndcg for r in res) / len(res))
     print(f"recall@{TOP_K}", sum(r.recall for r in res) / len(res))

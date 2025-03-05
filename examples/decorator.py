@@ -9,11 +9,11 @@ from vechord import (
     SimpleExtractor,
     SpacyDenseEmbedding,
 )
-from vechord.registry import (
+from vechord.registry import VechordRegistry
+from vechord.spec import (
     ForeignKey,
     PrimaryKeyAutoIncrease,
     Table,
-    VechordRegistry,
     Vector,
 )
 
@@ -131,9 +131,12 @@ if __name__ == "__main__":
 
     load_from_dir("./data")
     split_document()
-    # context_embedding()
+    context_embedding()
 
     chunks = query_chunk("vector search")
     print(chunks)
 
-    # vr.clear_storage()
+    scores = evaluate()
+    print(sum(scores) / len(scores))
+
+    vr.clear_storage()

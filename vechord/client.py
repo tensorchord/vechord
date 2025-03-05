@@ -1,3 +1,5 @@
+import contextlib
+import contextvars
 import hashlib
 from typing import Any, Optional
 
@@ -17,20 +19,54 @@ def hash_table_suffix(name: str) -> str:
     return hashlib.shake_256(name.encode()).hexdigest(4)
 
 
+active_cursor = contextvars.ContextVar("active_cursor", default=None)
+select_transaction_buffer = contextvars.ContextVar(
+    "select_transaction_buffer", default=False
+)
+
+
+@contextlib.contextmanager
+def limit_to_transaction_buffer():
+    """Only the rows inserted in the current transaction are returned."""
+    token = select_transaction_buffer.set(True)
+    try:
+        yield
+    finally:
+        select_transaction_buffer.reset(token)
+
+
 class VectorChordClient:
-    def __init__(self, namespace: str, url: str, autocommit: bool = True):
+    def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.url = url
-        self.conn = psycopg.connect(url, autocommit=autocommit)
+        self.conn = psycopg.connect(url, autocommit=True)
         self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
         register_vector(self.conn)
 
+    @contextlib.contextmanager
+    def transaction(self):
+        with self.conn.transaction():
+            cursor = self.conn.cursor()
+            token = active_cursor.set(cursor)
+            try:
+                yield cursor
+            finally:
+                active_cursor.reset(token)
+
+    def get_cursor(self):
+        cursor = active_cursor.get()
+        if cursor is not None:
+            # in a transaction
+            return cursor
+        # single command auto-commit
+        return self.conn.cursor()
+
     def create_table_if_not_exists(self, name: str, schema: list[tuple[str, str]]):
-        cursor = self.conn.cursor()
         columns = ", ".join(
             f"{col} {typ.format(namespace=self.ns)}" for col, typ in schema
         )
-        with self.conn.transaction():
+        with self.transaction():
+            cursor = self.get_cursor()
             cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.ns}_{name} ({columns});")
 
     def create_vector_index(self, name: str, column: str):
@@ -40,26 +76,36 @@ class VectorChordClient:
         lists = [1]
         spherical_centroids = false
         """
-        self.conn.execute(
-            f"CREATE INDEX IF NOT EXISTS {self.ns}_{name}_{column}_vec_idx ON "
-            f"{self.ns}_{name} USING vchordrq ({column} vector_l2_ops) WITH "
-            f"(options = $${config}$$);"
-        )
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.ns}_{name}_{column}_vec_idx ON "
+                f"{self.ns}_{name} USING vchordrq ({column} vector_l2_ops) WITH "
+                f"(options = $${config}$$);"
+            )
 
     def select(
         self,
         name: str,
         columns: list[str],
         kvs: Optional[dict[str, Any]] = None,
+        from_buffer: bool = False,
     ):
+        """Select from db table with optional key-value condition or from un-committed
+        transaction buffer.
+
+        - `from_buffer`: this ensures the select query only returns the rows that are
+            inserted in the current transaction.
+        """
         columns = ", ".join(columns)
+        cursor = self.get_cursor()
+        sql = f"SELECT {columns} FROM {self.ns}_{name}"
         if kvs:
             condition = " AND ".join(f"{col} = %({col})s" for col in kvs)
-            cursor = self.conn.execute(
-                f"SELECT {columns} FROM {self.ns}_{name} WHERE {condition};", kvs
-            )
-        else:
-            cursor = self.conn.execute(f"SELECT {columns} FROM {self.ns}_{name};")
+            sql += f" WHERE {condition}"
+        elif from_buffer:
+            sql += " WHERE xmin = pg_current_xact_id()::xid;"
+        cursor.execute(sql, kvs)
         return [row for row in cursor.fetchall()]
 
     def insert(self, name: str, values: dict):
