@@ -1,3 +1,5 @@
+import json
+import os
 import re
 from abc import ABC, abstractmethod
 
@@ -17,7 +19,7 @@ class RegexChunker(BaseChunker):
         self,
         size: int = 1536,
         overlap: int = 200,
-        separator: str = r"\s{2,}",
+        separator: str = r"[\n\r\f\v\t?!.;]{1,}",
         concat: str = ". ",
     ):
         self.size = size
@@ -104,3 +106,55 @@ class WordLlamaChunker(BaseChunker):
 
     def segment(self, text: str) -> list[str]:
         return self.model.split(text, target_size=self.size)
+
+
+class GeminiChunker(BaseChunker):
+    def __init__(self, model: str = "gemini-2.0-flash", size: int = 1536):
+        key = os.environ.get("GEMINI_API_KEY")
+        if not key:
+            raise ValueError("env GEMINI_API_KEY not set")
+
+        import google.generativeai as genai
+
+        self.model = genai.GenerativeModel(model)
+        self.prompt = f"""
+You are an expert text chunker, skilled at dividing documents into meaningful 
+segments while respecting token limits. Your goal is to break down a document into 
+chunks that are as semantically coherent as possible, ensuring no chunk exceeds a 
+specified token length. Maintain document order. The maximum token length is {size}.
+The return format is a list of chunk strings.The document is as follows:
+"""
+        self.output_token_limit = 8128
+        self.regex_chunker = RegexChunker(
+            size=self.output_token_limit,
+            overlap=0,
+            separator=r"[\n\r\f\v\t?!.;]{1,}",
+            concat=" ",
+        )
+
+    def name(self) -> str:
+        return f"gemini_chunk_{self.model.model_name}"
+
+    def segment(self, text: str) -> list[str]:
+        tokens = self.model.count_tokens(text).total_tokens
+        if tokens <= self.output_token_limit:
+            response = self.model.generate_content(
+                contents=self.prompt + f"\n<document> {text} </document>",
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "response_schema": list[str],
+                },
+            )
+            return json.loads(response.text)
+
+        chunks = []
+        for chunk in self.regex_chunker.segment(text):
+            response = self.model.generate_content(
+                contents=self.prompt + f"\n<document> {chunk} </document>",
+                generation_config={
+                    "response_mime_type": "application/json",
+                    "response_schema": list[str],
+                },
+            )
+            chunks.extend(json.loads(response.text))
+        return chunks

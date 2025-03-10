@@ -26,7 +26,15 @@ timeline
               : Full Text Search
               : Filter
         Rerank: ColBERT
+    section Evaluation
+        Metric: MAP
+              : Recall
+              : NDCG
 ```
+
+## Examples
+
+- [beir.py](./examples/beir.py): the most flexible way to use the library (loading, indexing, querying and evaluation)
 
 ## Development
 

@@ -20,4 +20,4 @@ test:
 	@uv run pytest -v tests
 
 sync:
-	@uv sync --all-extras
+	@uv sync --all-extras --all-groups

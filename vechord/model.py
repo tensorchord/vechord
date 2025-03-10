@@ -1,16 +1,8 @@
 from datetime import datetime
-from enum import Enum
 from typing import Optional
 
 import msgspec
 from numpy import ndarray
-
-
-class ChunkType(Enum):
-    CHUNK = "chunk"
-    CONTEXT = "context"
-    QUERY = "query"
-    SUMMARY = "summary"
 
 
 class Entity(msgspec.Struct, kw_only=True, frozen=True):
@@ -40,7 +32,7 @@ class Keywords(msgspec.Struct, kw_only=True):
 
 class Chunk(msgspec.Struct, kw_only=True):
     text: str
-    chunk_type: ChunkType = ChunkType.CHUNK
+    seq_id: int = 0
     vector: Optional[ndarray] = None
     sparse: Optional[SparseEmbedding] = None
     keywords: Optional[Keywords] = None

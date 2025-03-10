@@ -68,7 +68,7 @@ class DocumentResource:
         doc: Optional[Document] = validate_request(Document, req, resp)
         if doc is None:
             return
-        self.pipeline.client.delete(doc=doc)
+        self.pipeline.client.delete_doc(doc=doc)
 
 
 class QueryResource:
@@ -80,7 +80,7 @@ class QueryResource:
         if query is None:
             return
         res = self.pipeline.query(query=query.text)
-        resp.media = res
+        resp.data = msgspec.json.encode(res)
 
 
 def create_web_app(pipeline: Pipeline) -> App:

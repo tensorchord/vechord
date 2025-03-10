@@ -3,8 +3,8 @@ from rich import print
 from vechord import (
     LocalLoader,
     Pipeline,
+    RegexChunker,
     SimpleExtractor,
-    SpacyChunker,
     SpacyDenseEmbedding,
     VectorChordClient,
 )
@@ -16,7 +16,7 @@ if __name__ == "__main__":
         ),
         loader=LocalLoader("data", include=[".pdf"]),
         extractor=SimpleExtractor(),
-        chunker=SpacyChunker(),
+        chunker=RegexChunker(),
         emb=SpacyDenseEmbedding(),
     )
     pipe.run()

@@ -188,3 +188,6 @@ vechord/__version__.py
 
 # ini file
 *.ini
+
+# datasets
+datasets/

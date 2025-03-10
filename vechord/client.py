@@ -1,14 +1,16 @@
+import contextlib
+import contextvars
 import hashlib
-from time import perf_counter
-from typing import Optional
+from typing import Any, Optional
 
+import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 
 from vechord.augment import BaseAugmenter
 from vechord.embedding import BaseEmbedding, VecType
 from vechord.log import logger
-from vechord.model import Chunk, Document
+from vechord.model import Chunk, Document, RetrievedChunk
 
 PSQL_NAMING_LIMIT = 64
 
@@ -17,13 +19,126 @@ def hash_table_suffix(name: str) -> str:
     return hashlib.shake_256(name.encode()).hexdigest(4)
 
 
+active_cursor = contextvars.ContextVar("active_cursor", default=None)
+select_transaction_buffer = contextvars.ContextVar(
+    "select_transaction_buffer", default=False
+)
+
+
+@contextlib.contextmanager
+def limit_to_transaction_buffer():
+    """Only the rows inserted in the current transaction are returned."""
+    token = select_transaction_buffer.set(True)
+    try:
+        yield
+    finally:
+        select_transaction_buffer.reset(token)
+
+
 class VectorChordClient:
-    def __init__(self, namespace: str, url: str, autocommit: bool = True):
+    def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.url = url
-        self.conn = psycopg.connect(url, autocommit=autocommit)
+        self.conn = psycopg.connect(url, autocommit=True)
         self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
         register_vector(self.conn)
+
+    @contextlib.contextmanager
+    def transaction(self):
+        with self.conn.transaction():
+            cursor = self.conn.cursor()
+            token = active_cursor.set(cursor)
+            try:
+                yield cursor
+            finally:
+                active_cursor.reset(token)
+
+    def get_cursor(self):
+        cursor = active_cursor.get()
+        if cursor is not None:
+            # in a transaction
+            return cursor
+        # single command auto-commit
+        return self.conn.cursor()
+
+    def create_table_if_not_exists(self, name: str, schema: list[tuple[str, str]]):
+        columns = ", ".join(
+            f"{col} {typ.format(namespace=self.ns)}" for col, typ in schema
+        )
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(f"CREATE TABLE IF NOT EXISTS {self.ns}_{name} ({columns});")
+
+    def create_vector_index(self, name: str, column: str):
+        config = """
+        residual_quantization = true
+        [build.internal]
+        lists = [1]
+        spherical_centroids = false
+        """
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.ns}_{name}_{column}_vec_idx ON "
+                f"{self.ns}_{name} USING vchordrq ({column} vector_l2_ops) WITH "
+                f"(options = $${config}$$);"
+            )
+
+    def select(
+        self,
+        name: str,
+        columns: list[str],
+        kvs: Optional[dict[str, Any]] = None,
+        from_buffer: bool = False,
+    ):
+        """Select from db table with optional key-value condition or from un-committed
+        transaction buffer.
+
+        - `from_buffer`: this ensures the select query only returns the rows that are
+            inserted in the current transaction.
+        """
+        columns = ", ".join(columns)
+        cursor = self.get_cursor()
+        sql = f"SELECT {columns} FROM {self.ns}_{name}"
+        if kvs:
+            condition = " AND ".join(f"{col} = %({col})s" for col in kvs)
+            sql += f" WHERE {condition}"
+        elif from_buffer:
+            sql += " WHERE xmin = pg_current_xact_id()::xid;"
+        cursor.execute(sql, kvs)
+        return [row for row in cursor.fetchall()]
+
+    def insert(self, name: str, values: dict):
+        columns = ", ".join(values.keys())
+        placeholders = ", ".join(f"%({col})s" for col in values)
+        self.conn.execute(
+            f"INSERT INTO {self.ns}_{name} ({columns}) VALUES ({placeholders});", values
+        )
+
+    def delete(self, name: str, kvs: dict):
+        if kvs:
+            condition = " AND ".join(f"{col} = %({col})s" for col in kvs)
+            self.conn.execute(f"DELETE FROM {self.ns}_{name} WHERE {condition};", kvs)
+        else:
+            self.conn.execute(f"DELETE FROM {self.ns}_{name};")
+
+    def query_vec(
+        self,
+        name: str,
+        vec_col: str,
+        vec: np.ndarray,
+        return_fields: list[str],
+        topk: int = 10,
+    ):
+        columns = ", ".join(return_fields)
+        cursor = self.conn.execute(
+            f"SELECT {columns} FROM {self.ns}_{name} ORDER BY {vec_col} <-> %s LIMIT %s;",
+            (vec, topk),
+        )
+        return [row for row in cursor.fetchall()]
+
+    def drop(self, name: str):
+        self.conn.execute(f"DROP TABLE IF EXISTS {self.ns}_{name} CASCADE;")
 
     def _get_emb_table_name(self, emb: BaseEmbedding) -> str:
         return f"{self.ns}_emb_{hash_table_suffix(self.chunk_table + emb.name())}"
@@ -53,40 +168,38 @@ class VectorChordClient:
         spherical_centroids = false
         """
         try:
-            self.conn.execute(
-                f"CREATE TABLE IF NOT EXISTS {self.ns}_doc "
-                "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
-                "name TEXT, digest TEXT NOT NULL UNIQUE, updated_at TIMESTAMP, "
-                "source TEXT, data BYTEA);"
-            )
-            self.conn.execute(
-                "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'chunk_type') THEN "
-                "CREATE TYPE chunk_type AS ENUM ('chunk', 'context', 'query', 'summary');"
-                "END IF; END $$;"
-            )
-            self.conn.execute(
-                f"CREATE TABLE IF NOT EXISTS {self.chunk_table} "
-                "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
-                f"doc_id INT, seq_id INT, content TEXT, type CHUNK_TYPE);"
-                f"COMMENT ON TABLE {self.chunk_table} IS 'from {self.identifier}';"
-                f"CREATE UNIQUE INDEX IF NOT EXISTS {self.chunk_table}_doc_seq_unique_idx ON {self.chunk_table} (doc_id, seq_id);"
-            )
-            for emb in self.embs:
-                if emb.vec_type() != VecType.DENSE:
-                    # only support dense embedding for now
-                    continue
-                table = self._get_emb_table_name(emb)
-                assert len(table) < PSQL_NAMING_LIMIT, f"table name '{table}' too long"
-                self.conn.execute(
-                    f"CREATE TABLE IF NOT EXISTS {table} "
-                    f"(id INT NOT NULL UNIQUE, doc_id INT, embedding VECTOR({emb.get_dim()}));"
-                    f"COMMENT ON TABLE {table} IS 'from {self.identifier}-{emb.name()}';"
+            cursor = self.conn.cursor()
+            with self.conn.transaction():
+                cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {self.ns}_doc "
+                    "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+                    "name TEXT, digest TEXT NOT NULL UNIQUE, updated_at TIMESTAMP, "
+                    "source TEXT, data BYTEA);"
                 )
-                self.conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS {table}_vec_idx ON {table} "
-                    "USING vchordrq (embedding vector_l2_ops) WITH "
-                    f"(options = $${config}$$);"
+                cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {self.chunk_table} "
+                    "(id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+                    f"doc_id INT, seq_id INT, content TEXT);"
+                    f"COMMENT ON TABLE {self.chunk_table} IS 'from {self.identifier}';"
                 )
+                for emb in self.embs:
+                    if emb.vec_type() != VecType.DENSE:
+                        # only support dense embedding for now
+                        continue
+                    table = self._get_emb_table_name(emb)
+                    assert len(table) < PSQL_NAMING_LIMIT, (
+                        f"table name '{table}' too long"
+                    )
+                    cursor.execute(
+                        f"CREATE TABLE IF NOT EXISTS {table} "
+                        f"(id INT NOT NULL UNIQUE, doc_id INT, embedding VECTOR({emb.get_dim()}));"
+                        f"COMMENT ON TABLE {table} IS 'from {self.identifier}-{emb.name()}';"
+                    )
+                    cursor.execute(
+                        f"CREATE INDEX IF NOT EXISTS {table}_vec_idx ON {table} "
+                        "USING vchordrq (embedding vector_l2_ops) WITH "
+                        f"(options = $${config}$$);"
+                    )
         except psycopg.errors.DatabaseError as err:
             logger.error(err)
             logger.info("rollback from the previous error")
@@ -162,28 +275,30 @@ class VectorChordClient:
                 return False
         return True
 
-    def insert(self, doc: Document, chunks: list[Chunk]):
+    def insert_doc(self, doc: Document, chunks: list[Chunk]):
         try:
-            cursor = self.conn.execute(
-                f"INSERT INTO {self.ns}_doc (name, digest, updated_at, source, data) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (digest) DO UPDATE SET name = {self.ns}_doc.name RETURNING id",
-                (doc.path, doc.digest, doc.updated_at, doc.source, doc.data),
-            )
-            doc_id = cursor.fetchone()[0]
-
-            for i, chunk in enumerate(chunks):
-                cursor = self.conn.execute(
-                    f"INSERT INTO {self.chunk_table} (doc_id, seq_id, content, type) VALUES (%s, %s, %s, %s) ON CONFLICT (doc_id, seq_id) DO UPDATE SET content = EXCLUDED.content RETURNING id",
-                    (doc_id, i, chunk.text, chunk.chunk_type.value),
+            cursor = self.conn.cursor()
+            with self.conn.transaction():
+                cursor.execute(
+                    f"INSERT INTO {self.ns}_doc (name, digest, updated_at, source, data) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (digest) DO UPDATE SET name = {self.ns}_doc.name RETURNING id",
+                    (doc.path, doc.digest, doc.updated_at, doc.source, doc.data),
                 )
-                chunk_id = cursor.fetchone()[0]
-                for emb in self.embs:
-                    if emb.vec_type() != VecType.DENSE:
-                        continue
-                    table = self._get_emb_table_name(emb)
-                    self.conn.execute(
-                        f"INSERT INTO {table} (id, doc_id, embedding) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
-                        (chunk_id, doc_id, emb.vectorize_chunk(chunk.text)),
+                doc_id = cursor.fetchone()[0]
+
+                for chunk in chunks:
+                    cursor.execute(
+                        f"INSERT INTO {self.chunk_table} (doc_id, seq_id, content) VALUES (%s, %s, %s) RETURNING id",
+                        (doc_id, chunk.seq_id, chunk.text),
                     )
+                    chunk_id = cursor.fetchone()[0]
+                    for emb in self.embs:
+                        if emb.vec_type() != VecType.DENSE:
+                            continue
+                        table = self._get_emb_table_name(emb)
+                        cursor.execute(
+                            f"INSERT INTO {table} (id, doc_id, embedding) VALUES (%s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                            (chunk_id, doc_id, emb.vectorize_chunk(chunk.text)),
+                        )
             logger.debug("inserted %s chunks from file `%s`", len(chunks), doc.path)
         except psycopg.errors.DatabaseError as err:
             logger.error(err)
@@ -191,23 +306,21 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def delete(self, doc: Document):
+    def delete_doc(self, doc: Document):
         try:
-            cursor = self.conn.execute(
-                f"SELECT id FROM {self.ns}_doc WHERE digest = %s", (doc.digest,)
-            )
-            doc_id = cursor.fetchone()[0]
-            cursor = self.conn.execute(
-                f"DELETE FROM {self.chunk_table} WHERE doc_id = %s", (doc_id,)
-            )
-            cursor = self.conn.execute(
-                f"DELETE FROM {self.ns}_doc WHERE id = %s", (doc_id,)
-            )
-            for emb in self.embs:
-                table = self._get_emb_table_name(emb)
-                cursor = self.conn.execute(
-                    f"DELETE FROM {table} WHERE doc_id = %s", (doc_id,)
+            cursor = self.conn.cursor()
+            with self.conn.transaction():
+                cursor.execute(
+                    f"SELECT id FROM {self.ns}_doc WHERE digest = %s", (doc.digest,)
                 )
+                doc_id = cursor.fetchone()[0]
+                cursor.execute(
+                    f"DELETE FROM {self.chunk_table} WHERE doc_id = %s", (doc_id,)
+                )
+                cursor.execute(f"DELETE FROM {self.ns}_doc WHERE id = %s", (doc_id,))
+                for emb in self.embs:
+                    table = self._get_emb_table_name(emb)
+                    cursor.execute(f"DELETE FROM {table} WHERE doc_id = %s", (doc_id,))
             logger.debug("deleted file %s", doc.path)
         except psycopg.errors.DatabaseError as err:
             logger.error(err)
@@ -215,18 +328,15 @@ class VectorChordClient:
             self.conn.rollback()
             raise err
 
-    def query(self, query: Chunk, topk: int = 10) -> list[str]:
+    def query_chunk(self, query: Chunk, topk: int = 10) -> list[RetrievedChunk]:
         dense_emb = next(emb for emb in self.embs if emb.vec_type() == VecType.DENSE)
         assert dense_emb, "no dense embedding found"
         emb_table = self._get_emb_table_name(dense_emb)
-        start = perf_counter()
         try:
             cursor = self.conn.execute(
-                "WITH ranked AS ("
-                "SELECT c.id, c.content, e.embedding, "
-                "ROW_NUMBER() OVER (ORDER BY e.embedding <-> %s) as ranking "
-                f"FROM {self.chunk_table} c JOIN {emb_table} e ON c.id = e.id)"
-                "SELECT id, content FROM ranked WHERE ranking <= %s",
+                "SELECT c.id, c.content, e.embedding <-> %s as score "
+                f"FROM {self.chunk_table} c JOIN {emb_table} e ON c.id = e.id "
+                "ORDER BY score LIMIT %s",
                 (dense_emb.vectorize_query(query.text), topk),
             )
             res = cursor.fetchall()
@@ -235,5 +345,4 @@ class VectorChordClient:
             logger.info("rollback from the previous error")
             self.conn.rollback()
             raise err
-        logger.debug("query time: %s", perf_counter() - start)
-        return [row[1] for row in res]
+        return [RetrievedChunk(uid=row[0], text=row[1], score=row[2]) for row in res]

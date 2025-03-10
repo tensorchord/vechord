@@ -1,0 +1,142 @@
+from datetime import datetime
+from typing import Annotated, Optional
+
+from vechord import (
+    GeminiAugmenter,
+    GeminiEvaluator,
+    LocalLoader,
+    RegexChunker,
+    SimpleExtractor,
+    SpacyDenseEmbedding,
+)
+from vechord.registry import VechordRegistry
+from vechord.spec import (
+    ForeignKey,
+    PrimaryKeyAutoIncrease,
+    Table,
+    Vector,
+)
+
+
+class Document(Table, kw_only=True):
+    uid: Optional[PrimaryKeyAutoIncrease] = None
+    digest: str
+    filename: str
+    text: str
+    updated_at: datetime
+
+
+class Chunk(Table, kw_only=True):
+    uid: Optional[PrimaryKeyAutoIncrease] = None
+    doc_uid: Annotated[int, ForeignKey[Document.uid]]
+    seq_id: int
+    text: str
+    vector: Vector[96]
+
+
+class ContextChunk(Table, kw_only=True):
+    chunk_uid: Annotated[int, ForeignKey[Chunk.uid]]
+    text: str
+    vector: Vector[96]
+
+
+vr = VechordRegistry("decorator", "postgresql://postgres:postgres@172.17.0.1:5432/")
+vr.register([Document, Chunk, ContextChunk])
+
+
+@vr.inject(output=Document)
+def load_from_dir(dirpath: str) -> list[Document]:
+    loader = LocalLoader(dirpath, include=[".pdf"])
+    extractor = SimpleExtractor()
+    return [
+        Document(
+            digest=doc.digest,
+            filename=doc.path,
+            text=extractor.extract(doc),
+            updated_at=doc.updated_at,
+        )
+        for doc in loader.load()
+    ]
+
+
+dense = SpacyDenseEmbedding()
+
+
+@vr.inject(input=Document, output=Chunk)
+def split_document(uid: int, text: str) -> list[Chunk]:
+    chunker = RegexChunker(overlap=0)
+    chunks = chunker.segment(text)
+    return [
+        Chunk(doc_uid=uid, seq_id=i, text=chunk, vector=dense.vectorize_chunk(chunk))
+        for i, chunk in enumerate(chunks)
+    ]
+
+
+@vr.inject(input=Document, output=ContextChunk)
+def context_embedding(uid: int, text: str) -> list[ContextChunk]:
+    chunks: list[Chunk] = vr.select_by(
+        Chunk, Chunk.partial_init(doc_uid=uid), fields=["uid", "text"]
+    )
+    augmentor = GeminiAugmenter()
+    augmentor.reset(text)
+    context_chunks = [
+        f"{context}\n{origin}"
+        for (context, origin) in zip(
+            augmentor.augment_context([c.text for c in chunks]),
+            [c.text for c in chunks],
+        )
+    ]
+    return [
+        ContextChunk(
+            chunk_uid=chunk_uid, text=augmented, vector=dense.vectorize_chunk(augmented)
+        )
+        for (chunk_uid, augmented) in zip([c.uid for c in chunks], context_chunks)
+    ]
+
+
+def query_chunk(query: str) -> list[Chunk]:
+    vector = dense.vectorize_query(query)
+    res: list[Chunk] = vr.search(
+        Chunk,
+        vector,
+        topk=5,
+        return_vector=False,
+    )
+    return res
+
+
+def query_context_chunk(query: str) -> list[ContextChunk]:
+    vector = dense.vectorize_query(query)
+    res: list[ContextChunk] = vr.search(
+        ContextChunk,
+        vector,
+        topk=5,
+        return_vector=False,
+    )
+    return res
+
+
+@vr.inject(input=Chunk)
+def evaluate(uid: int, doc_uid: int, text: str):
+    evaluator = GeminiEvaluator()
+    doc: Document = vr.select_by(Document, Document.partial_init(uid=doc_uid))[0]
+    query = evaluator.produce_query(doc.text, text)
+    retrieved = query_chunk(query)
+    score = evaluator.evaluate_one(uid, [r.uid for r in retrieved])
+    return score
+
+
+if __name__ == "__main__":
+    from rich import print
+
+    load_from_dir("./data")
+    split_document()
+    context_embedding()
+
+    chunks = query_chunk("vector search")
+    print(chunks)
+
+    scores = evaluate()
+    print(sum(scores) / len(scores))
+
+    vr.clear_storage()

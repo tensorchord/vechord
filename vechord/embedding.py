@@ -67,6 +67,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
         import google.generativeai as genai
 
         self.client = genai.embed_content
+        self.limit = 10000
         self.model = model
         self.dim = dim
 
@@ -81,7 +82,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
 
     def vectorize_chunk(self, text: str) -> np.ndarray:
         res = self.client(
-            content=text, model=self.model, output_dimensionality=self.dim
+            content=text[: self.limit], model=self.model, output_dimensionality=self.dim
         )
         return np.array(res["embedding"])
 
