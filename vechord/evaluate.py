@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from typing import Sequence
 
 import pytrec_eval
 
@@ -12,19 +13,20 @@ class BaseEvaluator(ABC):
         self,
         chunk_ids: list[int],
         retrieves: list[list[RetrievedChunk]],
-        measures: list[str] = ("map", "ndcg", "recall"),
+        measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
         num = len(chunk_ids)
         qids = list(range(num))
         query_relevance = {
-            str(qid): {str(chunk_id): 1} for qid, chunk_id in zip(qids, chunk_ids)
+            str(qid): {str(chunk_id): 1}
+            for qid, chunk_id in zip(qids, chunk_ids, strict=False)
         }
         evaluator = pytrec_eval.RelevanceEvaluator(
             query_relevance=query_relevance, measures=measures
         )
         res = {
             str(qid): {str(r.uid): 1 / (r.score + 1e-6) for r in retrieve}
-            for qid, retrieve in zip(qids, retrieves)
+            for qid, retrieve in zip(qids, retrieves, strict=False)
         }
         evaluation = evaluator.evaluate(res)
         avg = defaultdict(float)
@@ -39,7 +41,7 @@ class BaseEvaluator(ABC):
     def evaluate_one(
         truth_id: int,
         resp_ids: list[int],
-        measures: list[str] = ("map", "ndcg", "recall"),
+        measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
         query_relevance = {"0": {str(truth_id): 1}}
         evaluator = pytrec_eval.RelevanceEvaluator(

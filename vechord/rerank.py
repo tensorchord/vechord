@@ -15,7 +15,7 @@ class CohereReranker(BaseReranker):
         super().__init__()
 
     def rerank(self, chunks: list[str]) -> list[str]:
-        return super().rerank(chunks)
+        raise NotImplementedError
 
 
 class ReciprocalRankFusion:

@@ -41,9 +41,9 @@ class RegexChunker(BaseChunker):
         return pieces[i + 1 :]
 
     def segment(self, text: str) -> list[str]:
-        chunks = []
-        previous = []
-        current = []
+        chunks: list[str] = []
+        previous: list[str] = []
+        current: list[str] = []
         total_length = 0
         pieces = self.separator.split(text)
 

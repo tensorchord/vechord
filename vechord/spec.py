@@ -6,6 +6,7 @@ from typing import (
     Generic,
     Optional,
     Protocol,
+    Sequence,
     Type,
     TypeVar,
     Union,
@@ -18,6 +19,7 @@ from uuid import UUID
 
 import msgspec
 import numpy as np
+from psycopg.types.json import Jsonb
 
 
 @runtime_checkable
@@ -103,7 +105,7 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
     return SpecificForeignKey
 
 
-class PrimaryKeyAutoIncrease:
+class PrimaryKeyAutoIncrease(int):
     @classmethod
     def schema(cls) -> str:
         return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
@@ -116,7 +118,8 @@ TYPE_TO_PSQL = {
     float: "FLOAT 8",
     bool: "BOOLEAN",
     UUID: "UUID",
-    datetime: "TIMESTAMP",
+    datetime: "TIMESTAMPTZ",
+    Jsonb: "JSONB",
 }
 
 
@@ -130,6 +133,7 @@ def get_first_type_from_optional(typ) -> Type:
     for arg in get_args(typ):
         if arg is not type(None):
             return arg
+    raise ValueError(f"no non-None type in {typ}")
 
 
 def type_to_psql(typ) -> str:
@@ -157,19 +161,19 @@ class Storage(msgspec.Struct):
         return cls.__name__.lower()
 
     @classmethod
-    def fields(cls) -> list[str]:
+    def fields(cls) -> Sequence[str]:
         return cls.__struct_fields__
 
     @classmethod
     def partial_init(cls, **kwargs):
         fields = cls.fields()
-        args = dict(zip(fields, [msgspec.UNSET] * len(fields))) | kwargs
+        args = dict(zip(fields, [msgspec.UNSET] * len(fields), strict=False)) | kwargs
         return cls(**args)
 
 
 class Table(Storage):
     @classmethod
-    def table_schema(cls) -> list[tuple[str, str]]:
+    def table_schema(cls) -> Sequence[tuple[str, str]]:
         hints = get_type_hints(cls, include_extras=True)
         return ((name, type_to_psql(typ)) for name, typ in hints.items())
 
@@ -178,6 +182,7 @@ class Table(Storage):
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
                 return name
+        return None
 
     @classmethod
     def primary_key(cls) -> Optional[str]:
@@ -187,6 +192,7 @@ class Table(Storage):
             )
             if issubclass(typ_cls, PrimaryKeyAutoIncrease):
                 return name
+        return None
 
     def todict(self) -> dict[str, Any]:
         defaults = getattr(self, "__struct_defaults__", None)
@@ -195,7 +201,7 @@ class Table(Storage):
             return {k: getattr(self, k) for k in fields}
         # ignore default values
         res = {}
-        for k, d in zip(fields, defaults):
+        for k, d in zip(fields, defaults, strict=False):
             v = getattr(self, k)
             if (d is msgspec.NODEFAULT or v != d) and v is not msgspec.UNSET:
                 res[k] = v

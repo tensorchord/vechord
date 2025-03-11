@@ -1,5 +1,6 @@
 from functools import wraps
 from typing import (
+    Callable,
     Generator,
     Iterator,
     Optional,
@@ -31,8 +32,8 @@ class VechordRegistry:
     def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.client = VectorChordClient(namespace, url)
-        self.tables: list[Table] = []
-        self.pipeline = []
+        self.tables: list[type[Table]] = []
+        self.pipeline: list[Callable] = []
 
     def register(self, tables: list[type[Table]]):
         for table in tables:
@@ -40,14 +41,17 @@ class VechordRegistry:
                 raise ValueError(f"unsupported class {table}")
 
             self.client.create_table_if_not_exists(table.name(), table.table_schema())
+            logger.debug("create table %s if not exists", table.name())
             if vector_colume := table.vector_column():
                 self.client.create_vector_index(table.name(), vector_colume)
                 logger.debug(
-                    "create vector index for %s.%s", table.name(), vector_colume
+                    "create vector index for %s.%s if not exists",
+                    table.name(),
+                    vector_colume,
                 )
             self.tables.append(table)
 
-    def set_pipeline(self, pipeline: list[callable]):
+    def set_pipeline(self, pipeline: list[Callable]):
         self.pipeline = pipeline
 
     def run(self, *args, **kwargs):
@@ -77,8 +81,11 @@ class VechordRegistry:
 
         kvs = obj.todict()
         res = self.client.select(cls.name(), fields, kvs)
-        missing = dict(zip(cls_fields, [msgspec.UNSET] * len(cls_fields)))
-        return [cls(**(missing | {k: v for k, v in zip(fields, r)})) for r in res]
+        missing = dict(zip(cls_fields, [msgspec.UNSET] * len(cls_fields), strict=False))
+        return [
+            cls(**(missing | {k: v for k, v in zip(fields, r, strict=False)}))
+            for r in res
+        ]
 
     def search(
         self,
@@ -91,10 +98,10 @@ class VechordRegistry:
             raise ValueError(f"unsupported class {cls}")
         fields = list(cls.fields())
         vec_col = cls.vector_column()
-        addition = {}
+        if vec_col is None:
+            raise ValueError(f"no vector column found in {cls}")
         if not return_vector:
             fields.remove(vec_col)
-            addition[vec_col] = None
         res = self.client.query_vec(
             cls.name(),
             vec_col,
@@ -102,7 +109,10 @@ class VechordRegistry:
             topk=topk,
             return_fields=fields,
         )
-        return [cls(**{k: v for k, v in zip(fields, r)}, **addition) for r in res]
+        return [
+            cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
+            for r in res
+        ]
 
     def remove_by(self, cls: type[Table], obj):
         if not isinstance(obj, cls):
@@ -115,6 +125,11 @@ class VechordRegistry:
             raise ValueError("empty object")
         self.client.delete(cls.name(), kvs)
 
+    def insert(self, obj):
+        if not isinstance(obj, Table):
+            raise ValueError(f"unsupported class {type(obj)}")
+        self.client.insert(obj.name(), obj.todict())
+
     def inject(
         self, input: Optional[type[Table]] = None, output: Optional[type[Table]] = None
     ):
@@ -125,7 +140,7 @@ class VechordRegistry:
         if output is not None and not issubclass(output, Table):
             raise ValueError(f"unsupported class {output}")
 
-        def decorator(func: callable):
+        def decorator(func: Callable):
             hints = get_type_hints(func)
             returns = hints.pop("return", None)
             columns = hints.keys()
@@ -157,12 +172,12 @@ class VechordRegistry:
                 if is_list_of_type(returns):
                     for arg in arguments:
                         for ret in func(*arg, **kwargs):
-                            self.client.insert(output.name(), ret.todict())
+                            self.insert(ret)
                             count += 1
                 else:
                     for arg in arguments:
                         ret = func(*arg, **kwargs)
-                        self.client.insert(output.name(), ret.todict())
+                        self.insert(ret)
                         count += 1
                 logger.debug("inserted %d items to %s", count, output.name())
 
