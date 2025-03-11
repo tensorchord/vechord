@@ -42,12 +42,12 @@ class VechordRegistry:
 
             self.client.create_table_if_not_exists(table.name(), table.table_schema())
             logger.debug("create table %s if not exists", table.name())
-            if vector_colume := table.vector_column():
-                self.client.create_vector_index(table.name(), vector_colume)
+            if vector_column := table.vector_column():
+                self.client.create_vector_index(table.name(), vector_column)
                 logger.debug(
                     "create vector index for %s.%s if not exists",
                     table.name(),
-                    vector_colume,
+                    vector_column,
                 )
             self.tables.append(table)
 

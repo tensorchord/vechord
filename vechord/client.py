@@ -117,9 +117,9 @@ class VectorChordClient:
                 sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
                 for col in kvs
             )
-            query += sql.SQL("WHERE {condition}").format(condition=condition)
+            query += sql.SQL(" WHERE {condition}").format(condition=condition)
         elif from_buffer:
-            query += sql.SQL("WHERE xmin = pg_current_xact_id()::xid;")
+            query += sql.SQL(" WHERE xmin = pg_current_xact_id()::xid;")
         cursor.execute(query, kvs)
         return [row for row in cursor.fetchall()]
 
