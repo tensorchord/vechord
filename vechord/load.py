@@ -60,4 +60,4 @@ class S3Loader(BaseLoader):
 
     def load(self) -> list[Document]:
         # TODO: implement S3 loader
-        pass
+        raise NotImplementedError

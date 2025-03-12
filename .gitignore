@@ -173,6 +173,7 @@ cython_debug/
 
 # test data
 data/
+datasets/
 *.txt
 *.jpeg
 

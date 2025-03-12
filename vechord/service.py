@@ -58,8 +58,8 @@ class TableResource:
         if table is None:
             return
 
-        self.registry.dump_to_storage(cls=self.table_cls, obj=table)
-        resp.status_code = falcon.HTTP_201
+        self.registry.insert(table)
+        resp.status = falcon.HTTP_201
 
     def on_delete(self, req: Request, resp: Response):
         table = self.table_cls.partial_init(**req.params)
@@ -75,7 +75,8 @@ class PipelineResource:
         json = self.decoder.decode(req.stream.read())
         if not isinstance(json, dict):
             raise falcon.HTTPBadRequest(
-                "Invalid request", "Request must be a JSON Dict"
+                title="Invalid request",
+                description="Request must be a JSON Dict",
             )
         self.registry.run(**json)
 

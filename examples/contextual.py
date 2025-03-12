@@ -84,13 +84,16 @@ def context_embedding(uid: int, text: str) -> list[ContextChunk]:
         for (context, origin) in zip(
             augmentor.augment_context([c.text for c in chunks]),
             [c.text for c in chunks],
+            strict=False,
         )
     ]
     return [
         ContextChunk(
             chunk_uid=chunk_uid, text=augmented, vector=dense.vectorize_chunk(augmented)
         )
-        for (chunk_uid, augmented) in zip([c.uid for c in chunks], context_chunks)
+        for (chunk_uid, augmented) in zip(
+            [c.uid for c in chunks], context_chunks, strict=False
+        )
     ]
 
 
@@ -138,5 +141,8 @@ if __name__ == "__main__":
 
     scores = evaluate()
     print(sum(scores) / len(scores))
+
+    chunks = query_context_chunk("vector search")
+    print(chunks)
 
     vr.clear_storage()

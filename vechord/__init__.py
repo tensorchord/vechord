@@ -9,13 +9,11 @@ from vechord.embedding import (
 from vechord.evaluate import GeminiEvaluator
 from vechord.extract import GeminiExtractor, SimpleExtractor
 from vechord.load import LocalLoader
-from vechord.model import Chunk, Document
-from vechord.pipeline import Pipeline
+from vechord.model import Document
 from vechord.registry import VechordRegistry
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
 __all__ = [
-    "Chunk",
     "Document",
     "ForeignKey",
     "GeminiAugmenter",
@@ -26,7 +24,6 @@ __all__ = [
     "LocalLoader",
     "Memory",
     "OpenAIDenseEmbedding",
-    "Pipeline",
     "PrimaryKeyAutoIncrease",
     "RegexChunker",
     "SimpleExtractor",

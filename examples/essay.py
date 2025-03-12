@@ -83,7 +83,7 @@ def create_query(uid: int, text: str) -> Query:
 
 
 @vr.inject(input=Query)
-def evalute(cid: int, vector: Vector[768]) -> Evaluation:
+def evaluate(cid: int, vector: Vector[768]) -> Evaluation:
     chunks: list[Chunk] = vr.search(Chunk, vector, topk=TOP_K)
     score = evaluator.evaluate_one(cid, [chunk.uid for chunk in chunks])
     return Evaluation(
@@ -95,6 +95,6 @@ if __name__ == "__main__":
     segment_essay()
     create_query()
 
-    res: list[Evaluation] = evalute()
+    res: list[Evaluation] = evaluate()
     print("ndcg", sum(r.ndcg for r in res) / len(res))
     print(f"recall@{TOP_K}", sum(r.recall for r in res) / len(res))

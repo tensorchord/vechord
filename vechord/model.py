@@ -1,8 +1,6 @@
 from datetime import datetime
-from typing import Optional
 
 import msgspec
-from numpy import ndarray
 
 
 class Entity(msgspec.Struct, kw_only=True, frozen=True):
@@ -28,15 +26,6 @@ class SparseEmbedding(msgspec.Struct, kw_only=True, frozen=True):
 class Keywords(msgspec.Struct, kw_only=True):
     words: list[str]
     weights: list[float]
-
-
-class Chunk(msgspec.Struct, kw_only=True):
-    text: str
-    seq_id: int = 0
-    vector: Optional[ndarray] = None
-    sparse: Optional[SparseEmbedding] = None
-    keywords: Optional[Keywords] = None
-    entities: list[Entity] = []
 
 
 class RetrievedChunk(msgspec.Struct, kw_only=True):
