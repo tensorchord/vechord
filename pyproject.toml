@@ -19,7 +19,6 @@ dependencies = [
 ]
 
 [project.scripts]
-vechord = "vechord.main:main"
 
 [project.optional-dependencies]
 gemini = [

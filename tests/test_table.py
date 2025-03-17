@@ -8,7 +8,7 @@ import pytest
 from vechord.registry import VechordRegistry
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
-TEST_POSTGRES = "postgresql://postgres:postgres@172.17.0.1:5432/"
+TEST_POSTGRES = "postgresql://postgres:postgres@127.0.0.1:5432/"
 DenseVector = Vector[128]
 
 
