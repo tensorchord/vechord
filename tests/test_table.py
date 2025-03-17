@@ -5,6 +5,7 @@ import msgspec
 import numpy as np
 import pytest
 
+from vechord.log import logger
 from vechord.registry import VechordRegistry
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
@@ -36,6 +37,7 @@ def registry():
     registry = VechordRegistry("test", TEST_POSTGRES)
     registry.register([Document, Chunk])
     yield registry
+    logger.debug("clearing storage...")
     registry.clear_storage(drop_table=True)
     registry.pipeline.clear()
 
@@ -75,6 +77,8 @@ def test_foreign_key(registry):
     for record in docs + chunks:
         registry.insert(record)
 
+    assert len(registry.select_by(Document.partial_init())) == len(docs)
+    # remove the doc should also remove the related chunks
     registry.remove_by(Document.partial_init(uid=1))
     assert len(registry.select_by(Document.partial_init())) == 1
     assert len(registry.select_by(Chunk.partial_init())) == 0
