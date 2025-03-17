@@ -37,6 +37,8 @@ class BaseEmbedding(ABC):
 
 
 class SpacyDenseEmbedding(BaseEmbedding):
+    """Spacy Dense Embedding."""
+
     def __init__(self, model: str = "en_core_web_sm", dim: int = 96):
         import spacy
 
@@ -59,6 +61,8 @@ class SpacyDenseEmbedding(BaseEmbedding):
 
 
 class GeminiDenseEmbedding(BaseEmbedding):
+    """Gemini Dense Embedding."""
+
     def __init__(self, model: str = "models/text-embedding-004", dim: int = 768):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
@@ -88,6 +92,8 @@ class GeminiDenseEmbedding(BaseEmbedding):
 
 
 class OpenAIDenseEmbedding(BaseEmbedding):
+    """OpenAI Dense Embedding."""
+
     def __init__(self, model: str = "text-embedding-3-large", dim: int = 3072):
         key = os.environ.get("OPENAI_API_KEY")
         if not key:

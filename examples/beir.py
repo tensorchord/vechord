@@ -16,6 +16,9 @@ BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{
 DEFAULT_DATASET = "scifact"
 TOP_K = 10
 
+emb = GeminiDenseEmbedding()
+DenseVector = Vector[768]
+
 
 def download_dataset(dataset: str, output: Path):
     output.mkdir(parents=True, exist_ok=True)
@@ -49,14 +52,14 @@ class Corpus(Table):
     uid: str
     text: str
     title: str
-    vector: Vector[768]
+    vector: DenseVector
 
 
 class Query(Table):
     uid: str
     cid: str
     text: str
-    vector: Vector[768]
+    vector: DenseVector
 
 
 class Evaluation(msgspec.Struct):
@@ -67,7 +70,6 @@ class Evaluation(msgspec.Struct):
 
 vr = VechordRegistry(DEFAULT_DATASET, "postgresql://postgres:postgres@172.17.0.1:5432/")
 vr.register([Corpus, Query])
-emb = GeminiDenseEmbedding()
 
 
 @vr.inject(output=Corpus)
@@ -118,7 +120,7 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
 
 
 @vr.inject(input=Query)
-def evaluate(cid: str, vector: Vector[768]) -> Evaluation:
+def evaluate(cid: str, vector: DenseVector) -> Evaluation:
     docs: list[Corpus] = vr.search(Corpus, vector, topk=TOP_K)
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in docs])
     return Evaluation(

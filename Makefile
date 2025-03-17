@@ -24,3 +24,9 @@ test:
 
 sync:
 	@uv sync --all-extras --all-groups
+
+doc:
+	@cd docs && make html && cd ..
+	@uv run -m http.server -d docs/build/html -b 127.0.0.1 8000
+
+.PHONY: lint format test doc

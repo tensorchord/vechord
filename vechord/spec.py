@@ -39,6 +39,8 @@ class VectorMeta(type):
 
 
 class Vector(Generic[TypeVar("T")], metaclass=VectorMeta):
+    """Vector type with fixed dimension."""
+
     def __init__(self, *args, **kwargs):
         raise NotImplementedError("Use Vector[dim] to create a vector type")
 
@@ -77,6 +79,11 @@ class ForeignKeyMeta(type):
 
 
 class ForeignKey(Generic[TypeVar("K")], metaclass=ForeignKeyMeta):
+    """Reference to another table's attribute as a foreign key.
+
+    This should be used in the `Annotated[]` type hint.
+    """
+
     def __init__(self, *args, **kwargs):
         raise NotImplementedError("Use ForeignKey[ref] to create a foreign key type")
 
@@ -106,6 +113,8 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
 
 
 class PrimaryKeyAutoIncrease(int):
+    """Primary key with auto-increment ID type."""
+
     @classmethod
     def schema(cls) -> str:
         return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
@@ -172,13 +181,17 @@ class Storage(msgspec.Struct):
 
 
 class Table(Storage):
+    """Base class for table definition."""
+
     @classmethod
     def table_schema(cls) -> Sequence[tuple[str, str]]:
+        """Generate the table schema from the class attributes' type hints."""
         hints = get_type_hints(cls, include_extras=True)
         return ((name, type_to_psql(typ)) for name, typ in hints.items())
 
     @classmethod
     def vector_column(cls) -> Optional[str]:
+        """Get the vector column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
                 return name
@@ -186,6 +199,7 @@ class Table(Storage):
 
     @classmethod
     def primary_key(cls) -> Optional[str]:
+        """Get the primary key column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             typ_cls = (
                 get_first_type_from_optional(typ) if is_optional_type(typ) else typ
@@ -195,6 +209,10 @@ class Table(Storage):
         return None
 
     def todict(self) -> dict[str, Any]:
+        """Convert the table instance to a dictionary.
+
+        This will ignore the default values.
+        """
         defaults = getattr(self, "__struct_defaults__", None)
         fields = self.fields()
         if not defaults:

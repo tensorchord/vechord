@@ -18,6 +18,10 @@ URL = "https://paulgraham.com/{}.html"
 ARTICLE = "best"
 TOP_K = 10
 
+DenseVector = Vector[768]
+emb = GeminiDenseEmbedding()
+evaluator = GeminiEvaluator()
+
 
 class EssayParser(HTMLParser):
     def __init__(self, *, convert_charrefs: bool = ...) -> None:
@@ -41,14 +45,14 @@ class EssayParser(HTMLParser):
 class Chunk(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     text: str
-    vector: Vector[768]
+    vector: DenseVector
 
 
 class Query(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     cid: Annotated[int, ForeignKey[Chunk.uid]]
     text: str
-    vector: Vector[768]
+    vector: DenseVector
 
 
 class Evaluation:
@@ -59,8 +63,6 @@ class Evaluation:
 
 vr = VechordRegistry(ARTICLE, "postgresql://postgres:postgres@172.17.0.1:5432/")
 vr.register([Chunk, Query])
-emb = GeminiDenseEmbedding()
-evaluator = GeminiEvaluator()
 
 with httpx.Client() as client:
     resp = client.get(URL.format(ARTICLE))
@@ -83,7 +85,7 @@ def create_query(uid: int, text: str) -> Query:
 
 
 @vr.inject(input=Query)
-def evaluate(cid: int, vector: Vector[768]) -> Evaluation:
+def evaluate(cid: int, vector: DenseVector) -> Evaluation:
     chunks: list[Chunk] = vr.search(Chunk, vector, topk=TOP_K)
     score = evaluator.evaluate_one(cid, [chunk.uid for chunk in chunks])
     return Evaluation(

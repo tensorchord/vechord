@@ -29,12 +29,13 @@ class BaseAugmenter(ABC):
 
 
 class GeminiAugmenter(BaseAugmenter):
-    # Context caching is only available for stable models with fixed versions
-    def __init__(self, model: str = "models/gemini-1.5-flash-001", ttl_sec: int = 600):
-        """Gemini Augmenter with cache.
+    """Gemini Augmenter.
 
-        Minimal cache token is 32768.
-        """
+    Context caching is only available for stable models with fixed versions.
+    Minimal cache token is 32768.
+    """
+
+    def __init__(self, model: str = "models/gemini-1.5-flash-001", ttl_sec: int = 600):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
             raise ValueError("env GEMINI_API_KEY not set")
@@ -47,6 +48,7 @@ class GeminiAugmenter(BaseAugmenter):
         return f"gemini_augment_{self.model_name}"
 
     def reset(self, doc: str):
+        """Reset the document."""
         import google.generativeai as genai
 
         self.client = genai.GenerativeModel(model_name=self.model_name)
@@ -85,6 +87,7 @@ class GeminiAugmenter(BaseAugmenter):
         return res
 
     def augment_context(self, chunks: list[str]) -> list[str]:
+        """Generate the contextual chunks."""
         prompt = (
             "Here is the chunk we want to situate within the whole document "
             "<chunk>{chunk}</chunk>"
@@ -95,6 +98,7 @@ class GeminiAugmenter(BaseAugmenter):
         return self.augment(chunks, prompt)
 
     def augment_query(self, chunks: list[str]) -> list[str]:
+        """Generate the queries for chunks."""
         prompt = (
             "Here is the chunk we want to ask questions about "
             "<chunk>{chunk}</chunk>"
@@ -105,6 +109,7 @@ class GeminiAugmenter(BaseAugmenter):
         return self.augment(chunks, prompt)
 
     def summarize_doc(self) -> str:
+        """Summarize the document."""
         prompt = (
             "Summarize the provided document concisely while preserving its key "
             "ideas, main arguments, and essential details. Ensure clarity and "

@@ -15,6 +15,7 @@ class BaseEvaluator(ABC):
         retrieves: list[list[RetrievedChunk]],
         measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
+        """Evaluate the retrieval results for multiple queries."""
         num = len(chunk_ids)
         qids = list(range(num))
         query_relevance = {
@@ -43,6 +44,7 @@ class BaseEvaluator(ABC):
         resp_ids: list[int],
         measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
+        """Evaluate the retrieval results for a single query."""
         query_relevance = {"0": {str(truth_id): 1}}
         evaluator = pytrec_eval.RelevanceEvaluator(
             query_relevance=query_relevance, measures=measures
@@ -61,6 +63,8 @@ class BaseEvaluator(ABC):
 
 
 class GeminiEvaluator(BaseEvaluator):
+    """Evaluator using Gemini model to generate search queries."""
+
     def __init__(self, model: str = "gemini-2.0-flash"):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:

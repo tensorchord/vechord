@@ -15,6 +15,8 @@ class BaseChunker(ABC):
 
 
 class RegexChunker(BaseChunker):
+    """A simple regex-based chunker."""
+
     def __init__(
         self,
         size: int = 1536,
@@ -79,8 +81,12 @@ class RegexChunker(BaseChunker):
 
 
 class SpacyChunker(BaseChunker):
+    """A semantic sentence Chunker based on SpaCy.
+
+    This guarantees the generated chunks are sentences.
+    """
+
     def __init__(self, model: str = "en_core_web_sm"):
-        """A semantic sentence Chunker based on SpaCy."""
         import spacy
 
         self.model = model
@@ -94,8 +100,12 @@ class SpacyChunker(BaseChunker):
 
 
 class WordLlamaChunker(BaseChunker):
+    """A semantic chunker based on WordLlama.
+
+    This doesn't guarantee the generated chunks are sentences.
+    """
+
     def __init__(self, size: int = 1536):
-        """A semantic chunker based on WordLlama."""
         from wordllama import WordLlama
 
         self.model = WordLlama.load()
@@ -109,6 +119,8 @@ class WordLlamaChunker(BaseChunker):
 
 
 class GeminiChunker(BaseChunker):
+    """A semantic chunker based on Gemini."""
+
     def __init__(self, model: str = "gemini-2.0-flash", size: int = 1536):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:

@@ -31,6 +31,8 @@ class BaseExtractor(ABC):
 
 
 class SimpleExtractor(BaseExtractor):
+    """Local extractor for text files."""
+
     def __init__(self):
         pass
 
@@ -38,6 +40,7 @@ class SimpleExtractor(BaseExtractor):
         return "basic_extractor"
 
     def extract_pdf(self, doc: Document) -> str:
+        """Extract text from PDF using pypdfium2."""
         pdf = pdfium.PdfDocument(doc.data)
         text = []
         for page in pdf:
@@ -47,6 +50,8 @@ class SimpleExtractor(BaseExtractor):
 
 
 class GeminiExtractor(BaseExtractor):
+    """Extract text with Gemini model."""
+
     def __init__(self, model: str = "gemini-2.0-flash"):
         key = os.environ.get("GEMINI_API_KEY")
         if not key:
@@ -64,6 +69,7 @@ class GeminiExtractor(BaseExtractor):
         return f"gemini_extractor_{self.model.model_name}"
 
     def extract_pdf(self, doc: Document) -> str:
+        """Extract text from PDF page by page."""
         pdf = pdfium.PdfDocument(doc.data)
         text = []
         for page in pdf:

@@ -24,4 +24,7 @@ jobs:
     - name: Lint
       run: make lint
     - name: Test
-      run: make test
+      run: |
+        docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres tensorchord/vchord-postgres:pg17-v0.2.1
+        make test
+        docker stop vdb
