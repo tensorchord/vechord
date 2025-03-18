@@ -143,10 +143,8 @@ class VectorChordClient:
             )
         else:
             self.conn.execute(
-                sql.SQL(
-                    "DELETE FROM {table};".format(
-                        table=sql.Identifier(f"{self.ns}_{name}")
-                    )
+                sql.SQL("DELETE FROM {table};").format(
+                    table=sql.Identifier(f"{self.ns}_{name}")
                 )
             )
 

@@ -1,4 +1,5 @@
 from datetime import datetime
+from os import environ
 from typing import Annotated
 
 import msgspec
@@ -9,7 +10,11 @@ from vechord.log import logger
 from vechord.registry import VechordRegistry
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
-TEST_POSTGRES = "postgresql://postgres:postgres@127.0.0.1:5432/"
+URL = "127.0.0.1"
+# for local container development environment, use the host machine's IP
+if environ.get("REMOTE_CONTAINERS", "") == "true" or environ.get("USER", "") == "envd":
+    URL = "172.17.0.1"
+TEST_POSTGRES = f"postgresql://postgres:postgres@{URL}:5432/"
 DenseVector = Vector[128]
 
 
@@ -32,9 +37,9 @@ class Chunk(Table, kw_only=True):
     vector: DenseVector
 
 
-@pytest.fixture
-def registry():
-    registry = VechordRegistry("test", TEST_POSTGRES)
+@pytest.fixture(name="registry")
+def fixture_registry(request):
+    registry = VechordRegistry(request.node.name, TEST_POSTGRES)
     registry.register([Document, Chunk])
     yield registry
     logger.debug("clearing storage...")

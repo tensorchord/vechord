@@ -162,8 +162,6 @@ class VechordRegistry:
             raise ValueError(f"unsupported class {type(obj)}")
 
         kvs = obj.todict()
-        if not kvs:
-            raise ValueError("empty object")
         self.client.delete(obj.__class__.name(), kvs)
 
     def insert(self, obj: Table):
