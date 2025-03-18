@@ -1,17 +1,11 @@
 import contextlib
 import contextvars
-import hashlib
 from typing import Any, Optional, Sequence
 
 import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 from psycopg import sql
-
-
-def hash_table_suffix(name: str) -> str:
-    return hashlib.shake_256(name.encode()).hexdigest(4)
-
 
 active_cursor = contextvars.ContextVar("active_cursor", default=None)
 select_transaction_buffer = contextvars.ContextVar(
@@ -149,10 +143,8 @@ class VectorChordClient:
             )
         else:
             self.conn.execute(
-                sql.SQL(
-                    "DELETE FROM {table};".format(
-                        table=sql.Identifier(f"{self.ns}_{name}")
-                    )
+                sql.SQL("DELETE FROM {table};").format(
+                    table=sql.Identifier(f"{self.ns}_{name}")
                 )
             )
 

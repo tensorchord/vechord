@@ -6,7 +6,7 @@ import httpx
 import msgspec
 
 from vechord.chunk import RegexChunker
-from vechord.embedding import SpacyDenseEmbedding
+from vechord.embedding import GeminiDenseEmbedding
 from vechord.registry import VechordRegistry
 from vechord.service import create_web_app
 from vechord.spec import (
@@ -17,6 +17,9 @@ from vechord.spec import (
 )
 
 URL = "https://paulgraham.com/{}.html"
+DenseVector = Vector[768]
+emb = GeminiDenseEmbedding()
+chunker = RegexChunker(size=1024, overlap=0)
 
 
 class EssayParser(HTMLParser):
@@ -49,13 +52,11 @@ class Chunk(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
-    vector: Vector[96]
+    vector: DenseVector
 
 
 vr = VechordRegistry("http", "postgresql://postgres:postgres@172.17.0.1:5432/")
 vr.register([Document, Chunk])
-emb = SpacyDenseEmbedding()
-chunker = RegexChunker(size=1024, overlap=0)
 
 
 @vr.inject(output=Document)

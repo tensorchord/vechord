@@ -2,6 +2,7 @@ from typing import Optional
 
 import falcon
 import msgspec
+from defspec import OpenAPI, RenderTemplate
 from falcon import App, Request, Response
 
 from vechord.log import logger
@@ -50,7 +51,7 @@ class TableResource:
 
     def on_get(self, req: Request, resp: Response):
         table = self.table_cls.partial_init(**req.params)
-        rows = self.registry.select_by(cls=self.table_cls, obj=table)
+        rows = self.registry.select_by(obj=table)
         resp.data = msgspec.json.encode(rows)
 
     def on_post(self, req: Request, resp: Response):
@@ -63,7 +64,7 @@ class TableResource:
 
     def on_delete(self, req: Request, resp: Response):
         table = self.table_cls.partial_init(**req.params)
-        self.registry.remove_by(cls=self.table_cls, obj=table)
+        self.registry.remove_by(obj=table)
 
 
 class PipelineResource:
@@ -81,14 +82,68 @@ class PipelineResource:
         self.registry.run(**json)
 
 
+class OpenAPIResource:
+    def __init__(self, tables: list[Table]) -> None:
+        self.openapi = OpenAPI()
+        self.openapi.register_route("/", "get", summary="health check")
+        self.openapi.register_route("/api/pipeline", "post", summary="run the pipeline")
+        for table in tables:
+            path = f"/api/table/{table.name()}"
+            self.openapi.register_route(
+                path,
+                "get",
+                "get the table with partial attributes",
+                query_type=table,
+            )
+            self.openapi.register_route(
+                path,
+                "delete",
+                "delete table records according to partial attributes",
+                query_type=table,
+            )
+            self.openapi.register_route(
+                path,
+                "post",
+                "insert a new record to the table",
+                request_type=table,
+                request_content_type="json",
+            )
+        self.spec = self.openapi.to_json()
+
+    def on_get(self, req: Request, resp: Response):
+        resp.content_type = falcon.MEDIA_JSON
+        resp.data = self.spec
+
+
+class OpenAPIRender:
+    def __init__(self, spec_url: str, template: RenderTemplate) -> None:
+        self.template = template.value.format(spec_url=spec_url)
+
+    def on_get(self, req: Request, resp: Response):
+        resp.content_type = falcon.MEDIA_HTML
+        resp.text = self.template
+
+
 def create_web_app(registry: VechordRegistry) -> App:
+    """Create a `Falcon` WSGI application for the given registry.
+
+    This includes the:
+    - health check
+    - table GET/POST/DELETE
+    - pipeline POST
+    - OpenAPI spec and Swagger UI
+    """
     app = App()
-    app.add_route("/health", HealthCheck())
+    app.add_route("/", HealthCheck())
     for table in registry.tables:
         app.add_route(
             f"/api/table/{table.name()}",
             TableResource(table=table, registry=registry),
         )
     app.add_route("/api/pipeline", PipelineResource(registry))
+    app.add_route("/openapi/spec.json", OpenAPIResource(registry.tables))
+    app.add_route(
+        "/openapi/swagger", OpenAPIRender("/openapi/spec.json", RenderTemplate.SWAGGER)
+    )
     app.add_error_handler(Exception, uncaught_exception_handler)
     return app

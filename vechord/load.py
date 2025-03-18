@@ -19,6 +19,8 @@ class BaseLoader(ABC):
 
 
 class LocalLoader(BaseLoader):
+    """Load documents from local file system."""
+
     def __init__(self, path: str, include: list[str] | None = None):
         self.path = Path(path)
         self.include = set(ext.lower() for ext in include or [".txt"])
