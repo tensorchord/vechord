@@ -27,6 +27,17 @@ jobs:
       env:
         PYTEST_ADDOPTS: -s
       run: |
-        docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres --health-cmd="pg_isready -U postgres" --health-interval=1s --health-timeout=1s --health-retries=5 tensorchord/vchord-postgres:pg17-v0.2.1
+        docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres --health-cmd="pg_isready -U postgres" --health-interval=1s --health-timeout=1s --health-retries=5 ghcr.io/tensorchord/vchord_bm25-postgres:pg17-v0.1.1
+
+        # Wait for the container to be healthy
+        for i in {1..10}; do
+          if [ "$(docker inspect --format='{{.State.Health.Status}}' vdb)" == "healthy" ]; then
+            echo "Database container is healthy."
+            break
+          fi
+          echo "Waiting for database container to become healthy... ($i/10)"
+          sleep 1
+        done
+        
         make test
         docker stop vdb
