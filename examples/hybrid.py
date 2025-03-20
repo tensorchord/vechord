@@ -1,24 +1,16 @@
-from datetime import datetime
 from html.parser import HTMLParser
 from typing import Annotated
 
 import httpx
-import msgspec
 
 from vechord.chunk import RegexChunker
-from vechord.embedding import GeminiDenseEmbedding
+from vechord.embedding import SpacyDenseEmbedding
 from vechord.registry import VechordRegistry
-from vechord.service import create_web_app
-from vechord.spec import (
-    ForeignKey,
-    PrimaryKeyAutoIncrease,
-    Table,
-    Vector,
-)
+from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 URL = "https://paulgraham.com/{}.html"
-DenseVector = Vector[768]
-emb = GeminiDenseEmbedding()
+DenseVector = Vector[96]
+emb = SpacyDenseEmbedding()
 chunker = RegexChunker(size=1024, overlap=0)
 
 
@@ -45,7 +37,6 @@ class Document(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     title: str = ""
     text: str
-    updated_at: datetime = msgspec.field(default_factory=datetime.now)
 
 
 class Chunk(Table, kw_only=True):
@@ -53,9 +44,10 @@ class Chunk(Table, kw_only=True):
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
     vector: DenseVector
+    keyword: Keyword
 
 
-vr = VechordRegistry("http", "postgresql://postgres:postgres@172.17.0.1:5432/")
+vr = VechordRegistry("hybrid", "postgresql://postgres:postgres@172.17.0.1:5432/")
 vr.register([Document, Chunk])
 
 
@@ -74,16 +66,23 @@ def load_document(title: str) -> Document:
 def chunk_document(uid: int, text: str) -> list[Chunk]:
     chunks = chunker.segment(text)
     return [
-        Chunk(doc_id=uid, text=chunk, vector=DenseVector(emb.vectorize_chunk(chunk)))
+        Chunk(
+            doc_id=uid,
+            text=chunk,
+            vector=emb.vectorize_chunk(chunk),
+            keyword=Keyword(chunk),
+        )
         for chunk in chunks
     ]
 
 
 if __name__ == "__main__":
-    vr.set_pipeline([load_document, chunk_document])
-    app = create_web_app(vr)
+    load_document("smart")
+    chunk_document()
 
-    from wsgiref.simple_server import make_server
+    vec = vr.search_by_vector(Chunk, emb.vectorize_query("smart"), topk=3)
+    text = vr.search_by_keyword(Chunk, "smart", topk=3)
 
-    with make_server("", 8000, app) as server:
-        server.serve_forever()
+    from rich import print
+
+    print(vec, text)

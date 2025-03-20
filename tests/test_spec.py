@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 import msgspec
+import numpy as np
 import pytest
 
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
@@ -51,3 +52,16 @@ def test_table_cls_methods():
         "REFERENCES {namespace}_document(uid) ON DELETE CASCADE"
         in find_schema_by_name(Chunk.table_schema(), "doc_id")
     )
+
+
+def test_vector_type():
+    Dense = Vector[128]
+
+    # test the dim
+    with pytest.raises(ValueError):
+        Dense([0.1] * 100)
+
+    with pytest.raises(ValueError):
+        Dense(np.random.rand(123))
+
+    assert np.equal(Dense(np.ones(128)), Dense([1.0] * 128)).all()

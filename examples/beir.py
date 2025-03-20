@@ -90,7 +90,7 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Corpus]:
                 uid=item["_id"],
                 text=text,
                 title=title,
-                vector=vector,
+                vector=DenseVector(vector),
             )
 
 
@@ -115,13 +115,16 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
                 continue
             text = item.get("text", "")
             yield Query(
-                uid=uid, cid=table[uid], text=text, vector=emb.vectorize_query(text)
+                uid=uid,
+                cid=table[uid],
+                text=text,
+                vector=DenseVector(emb.vectorize_query(text)),
             )
 
 
 @vr.inject(input=Query)
 def evaluate(cid: str, vector: DenseVector) -> Evaluation:
-    docs: list[Corpus] = vr.search(Corpus, vector, topk=TOP_K)
+    docs: list[Corpus] = vr.search_by_vector(Corpus, vector, topk=TOP_K)
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in docs])
     return Evaluation(
         map=score.get("map"),

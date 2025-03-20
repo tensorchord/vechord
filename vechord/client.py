@@ -7,6 +7,8 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg import sql
 
+from vechord.spec import Keyword
+
 active_cursor = contextvars.ContextVar("active_cursor", default=None)
 select_transaction_buffer = contextvars.ContextVar(
     "select_transaction_buffer", default=False
@@ -29,6 +31,8 @@ class VectorChordClient:
         self.url = url
         self.conn = psycopg.connect(url, autocommit=True)
         self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
+        self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord_bm25 CASCADE")
+        self.conn.execute('SET search_path TO "$user", public, bm25_catalog')
         register_vector(self.conn)
 
     @contextlib.contextmanager
@@ -87,6 +91,23 @@ class VectorChordClient:
                 )
             )
 
+    def _keyword_index_name(self, name: str, column: str):
+        return f"{self.ns}_{name}_{column}_bm25_idx"
+
+    def create_keyword_index(self, name: str, column: str):
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(
+                sql.SQL(
+                    "CREATE INDEX IF NOT EXISTS {index} ON "
+                    "{table} USING bm25 ({column} bm25_ops);"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    index=sql.Identifier(self._keyword_index_name(name, column)),
+                    column=sql.Identifier(column),
+                )
+            )
+
     def select(
         self,
         name: str,
@@ -117,9 +138,18 @@ class VectorChordClient:
         cursor.execute(query, kvs)
         return [row for row in cursor.fetchall()]
 
+    @staticmethod
+    def _to_placeholder(kv: tuple[str, Any]):
+        key, value = kv
+        if isinstance(value, Keyword):
+            return sql.SQL("tokenize({}, {})").format(
+                sql.Placeholder(key), sql.Literal(value._tokenizer)
+            )
+        return sql.Placeholder(key)
+
     def insert(self, name: str, values: dict):
         columns = sql.SQL(", ").join(map(sql.Identifier, values))
-        placeholders = sql.SQL(", ").join(map(sql.Placeholder, values))
+        placeholders = sql.SQL(", ").join(map(self._to_placeholder, values.items()))
         self.conn.execute(
             sql.SQL("INSERT INTO {table} ({columns}) VALUES ({placeholders});").format(
                 table=sql.Identifier(f"{self.ns}_{name}"),
@@ -166,6 +196,31 @@ class VectorChordClient:
                 vec_col=sql.Identifier(vec_col),
             ),
             (vec, topk),
+        )
+        return [row for row in cursor.fetchall()]
+
+    def query_keyword(  # noqa: PLR0913
+        self,
+        name: str,
+        keyword_col: str,
+        keyword: str,
+        return_fields: Sequence[str],
+        tokenizer: str,
+        topk: int = 10,
+    ):
+        columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
+        cursor = self.conn.execute(
+            sql.SQL(
+                "SELECT {columns} FROM {table} ORDER BY {keyword_col} <&> "
+                "to_bm25query({index}, %s, {tokenizer}) LIMIT %s;"
+            ).format(
+                table=sql.Identifier(f"{self.ns}_{name}"),
+                columns=columns,
+                index=sql.Literal(self._keyword_index_name(name, keyword_col)),
+                tokenizer=sql.Literal(tokenizer),
+                keyword_col=sql.Identifier(keyword_col),
+            ),
+            (keyword, topk),
         )
         return [row for row in cursor.fetchall()]
 

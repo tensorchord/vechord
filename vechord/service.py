@@ -83,7 +83,7 @@ class PipelineResource:
 
 
 class OpenAPIResource:
-    def __init__(self, tables: list[Table]) -> None:
+    def __init__(self, tables: list[type[Table]]) -> None:
         self.openapi = OpenAPI()
         self.openapi.register_route("/", "get", summary="health check")
         self.openapi.register_route("/api/pipeline", "post", summary="run the pipeline")

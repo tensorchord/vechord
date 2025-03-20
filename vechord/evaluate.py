@@ -40,8 +40,8 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def evaluate_one(
-        truth_id: int,
-        resp_ids: list[int],
+        truth_id: str,
+        resp_ids: list[str],
         measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
         """Evaluate the retrieval results for a single query."""

@@ -4,9 +4,12 @@ from typing import (
     Generator,
     Iterator,
     Optional,
+    Sequence,
     get_origin,
     get_type_hints,
 )
+
+import numpy as np
 
 from vechord.client import (
     VectorChordClient,
@@ -62,6 +65,13 @@ class VechordRegistry:
                     table.name(),
                     vector_column,
                 )
+            if keyword_column := table.keyword_column():
+                self.client.create_keyword_index(table.name(), keyword_column)
+                logger.debug(
+                    "create keyword index for %s.%s if not exists",
+                    table.name(),
+                    keyword_column,
+                )
             self.tables.append(table)
 
     def set_pipeline(self, pipeline: list[Callable]):
@@ -87,7 +97,9 @@ class VechordRegistry:
                 func()
             return self.pipeline[-1]()
 
-    def select_by(self, obj: Table, fields: Optional[list[str]] = None) -> list[Table]:
+    def select_by(
+        self, obj: Table, fields: Optional[Sequence[str]] = None
+    ) -> list[Table]:
         """Retrieve the requested fields for the given object stored in the DB.
 
         Args:
@@ -114,12 +126,12 @@ class VechordRegistry:
             for r in res
         ]
 
-    def search(
+    def search_by_vector(
         self,
         cls: type[Table],
-        vec,
+        vec: np.ndarray,
         topk: int = 10,
-        return_vector: bool = False,
+        return_fields: Optional[Sequence[str]] = None,
     ) -> list[Table]:
         """Search the vector for the given `Table` class.
 
@@ -127,24 +139,56 @@ class VechordRegistry:
             cls: the `Table` class to be searched.
             vec: the vector to be searched.
             topk: the number of results to be returned.
-            return_vector: whether to return the vector column in the result.
-                This is usually much larger than any other fields, and it's
-                not necessary to return it if not needed.
+            return_fields: the fields to be returned, if not set, all the
+                non-[vector,keyword] fields will be returned.
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = list(cls.fields())
+        fields = cls.non_vec_columns() if return_fields is None else return_fields
         vec_col = cls.vector_column()
         if vec_col is None:
             raise ValueError(f"no vector column found in {cls}")
-        if not return_vector:
-            fields.remove(vec_col)
         res = self.client.query_vec(
             cls.name(),
             vec_col,
             vec,
             topk=topk,
             return_fields=fields,
+        )
+        return [
+            cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
+            for r in res
+        ]
+
+    def search_by_keyword(
+        self,
+        cls: type[Table],
+        keyword: str,
+        topk: int = 10,
+        return_fields: Optional[Sequence[str]] = None,
+    ) -> list[Table]:
+        """Search the keyword for the given `Table` class.
+
+        Args:
+            cls: the `Table` class to be searched.
+            keyword: the keyword to be searched.
+            topk: the number of results to be returned.
+            return_fields: the fields to be returned, if not set, all the
+                non-[vector,keyword] fields will be returned.
+        """
+        if not issubclass(cls, Table):
+            raise ValueError(f"unsupported class {cls}")
+        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        keyword_col = cls.keyword_column()
+        if keyword_col is None:
+            raise ValueError(f"no keyword column found in {cls}")
+        res = self.client.query_keyword(
+            cls.name(),
+            keyword_col,
+            keyword,
+            topk=topk,
+            return_fields=fields,
+            tokenizer=cls.keyword_tokenizer(),
         )
         return [
             cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
