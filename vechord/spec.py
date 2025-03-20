@@ -4,6 +4,7 @@ from typing import (
     Annotated,
     Any,
     Generic,
+    Literal,
     Optional,
     Protocol,
     Sequence,
@@ -38,8 +39,14 @@ class VectorMeta(type):
         return create_vector_type(dim)
 
 
-class Vector(Generic[TypeVar("T")], metaclass=VectorMeta):
-    """Vector type with fixed dimension."""
+V = TypeVar("V")
+
+
+class Vector(Generic[V], metaclass=VectorMeta):
+    """Vector type with fixed dimension.
+
+    User can assign `np.ndarray` with `np.float32` type or `list[float]` type.
+    """
 
     def __init__(self, *args, **kwargs):
         raise NotImplementedError("Use Vector[dim] to create a vector type")
@@ -50,26 +57,29 @@ class Vector(Generic[TypeVar("T")], metaclass=VectorMeta):
 
 
 def create_vector_type(dim: int) -> Type[Vector]:
-    class SpecificVector(Vector):
+    name = f"Vector[{dim}]"
+
+    class SpecificVector(Vector, np.ndarray):
         nonlocal dim
         _dim: int = dim
 
-        def __init__(self, vec: list[float] | np.ndarray):
+        def __new__(cls, vec: list[float] | np.ndarray):
             if isinstance(vec, np.ndarray):
                 if vec.shape != (dim,):
                     raise ValueError(f"expected shape ({dim},), got {vec.shape}")
             elif isinstance(vec, list):
                 if len(vec) != dim:
                     raise ValueError(f"expected length {dim}, got {len(vec)}")
+                vec = np.array(vec, dtype=np.float32)
             else:
                 raise ValueError("expected list or np.ndarray")
-            self.vec = vec
+            return np.asarray(vec, dtype=np.float32)
 
         @classmethod
         def schema(cls):
             return f"VECTOR({cls._dim})"
 
-    SpecificVector.__name__ = f"Vector[{dim}]"
+    SpecificVector.__name__ = name
     return SpecificVector
 
 
@@ -78,7 +88,10 @@ class ForeignKeyMeta(type):
         return create_foreign_key_type(ref)
 
 
-class ForeignKey(Generic[TypeVar("K")], metaclass=ForeignKeyMeta):
+F = TypeVar("F")
+
+
+class ForeignKey(Generic[F], metaclass=ForeignKeyMeta):
     """Reference to another table's attribute as a foreign key.
 
     This should be used in the `Annotated[]` type hint.
@@ -95,6 +108,8 @@ class ForeignKey(Generic[TypeVar("K")], metaclass=ForeignKeyMeta):
 
 
 def create_foreign_key_type(ref) -> Type[ForeignKey]:
+    name = f"ForeignKey[{ref}]"
+
     class SpecificForeignKey(ForeignKey):
         nonlocal ref
         _ref = ref
@@ -108,7 +123,7 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
             ref_val = cls._ref.__name__
             return f"REFERENCES {{namespace}}_{ref_cls}({ref_val}) ON DELETE CASCADE"
 
-    SpecificForeignKey.__name__ = f"ForeignKey[{ref}]"
+    SpecificForeignKey.__name__ = name
     return SpecificForeignKey
 
 
@@ -118,6 +133,27 @@ class PrimaryKeyAutoIncrease(int):
     @classmethod
     def schema(cls) -> str:
         return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
+
+
+class Keyword(str):
+    """Keyword type for text search.
+
+    User can assign the `str` type, it will be tokenized and converted to
+    `bm25vector` in PostgreSQL.
+    """
+
+    _tokenizer: Literal["Unicode", "Bert", "Tocken"] = "Bert"
+
+    @classmethod
+    def schema(cls) -> str:
+        return "bm25vector"
+
+    @classmethod
+    def with_tokenizer(
+        cls, tokenizer: Literal["Unicode", "Bert", "Tocken"]
+    ) -> Type["Keyword"]:
+        cls._tokenizer = tokenizer
+        return cls
 
 
 TYPE_TO_PSQL = {
@@ -187,7 +223,7 @@ class Table(Storage):
     def table_schema(cls) -> Sequence[tuple[str, str]]:
         """Generate the table schema from the class attributes' type hints."""
         hints = get_type_hints(cls, include_extras=True)
-        return ((name, type_to_psql(typ)) for name, typ in hints.items())
+        return tuple((name, type_to_psql(typ)) for name, typ in hints.items())
 
     @classmethod
     def vector_column(cls) -> Optional[str]:
@@ -195,6 +231,28 @@ class Table(Storage):
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
                 return name
+        return None
+
+    @classmethod
+    def keyword_column(cls) -> Optional[str]:
+        """Get the keyword column name."""
+        for name, typ in get_type_hints(cls, include_extras=True).items():
+            if typ is Keyword:
+                return name
+        return None
+
+    @classmethod
+    def non_vec_columns(cls) -> Sequence[str]:
+        """Get the column names that are not vector or keyword."""
+        exclude = (cls.vector_column(), cls.keyword_column())
+        return tuple(field for field in cls.fields() if field not in exclude)
+
+    @classmethod
+    def keyword_tokenizer(cls) -> Optional[str]:
+        """Get the keyword tokenizer."""
+        for _, typ in get_type_hints(cls, include_extras=True).items():
+            if typ is Keyword:
+                return typ._tokenizer
         return None
 
     @classmethod

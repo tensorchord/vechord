@@ -75,19 +75,22 @@ doc = "\n".join(t for t in parser.content if t)
 def segment_essay() -> list[Chunk]:
     chunker = RegexChunker()
     chunks = chunker.segment(doc)
-    return [Chunk(text=chunk, vector=emb.vectorize_chunk(chunk)) for chunk in chunks]
+    return [
+        Chunk(text=chunk, vector=DenseVector(emb.vectorize_chunk(chunk)))
+        for chunk in chunks
+    ]
 
 
 @vr.inject(input=Chunk, output=Query)
 def create_query(uid: int, text: str) -> Query:
     query = evaluator.produce_query(doc, text)
-    return Query(cid=uid, text=query, vector=emb.vectorize_chunk(query))
+    return Query(cid=uid, text=query, vector=DenseVector(emb.vectorize_chunk(query)))
 
 
 @vr.inject(input=Query)
 def evaluate(cid: int, vector: DenseVector) -> Evaluation:
-    chunks: list[Chunk] = vr.search(Chunk, vector, topk=TOP_K)
-    score = evaluator.evaluate_one(cid, [chunk.uid for chunk in chunks])
+    chunks: list[Chunk] = vr.search_by_vector(Chunk, vector, topk=TOP_K)
+    score = evaluator.evaluate_one(str(cid), [str(chunk.uid) for chunk in chunks])
     return Evaluation(
         map=score["map"], ndcg=score["ndcg"], recall=score[f"recall_{TOP_K}"]
     )

@@ -8,7 +8,7 @@ import pytest
 
 from vechord.log import logger
 from vechord.registry import VechordRegistry
-from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 URL = "127.0.0.1"
 # for local container development environment, use the host machine's IP
@@ -20,7 +20,7 @@ DenseVector = Vector[128]
 
 def gen_vector():
     rng = np.random.default_rng()
-    return rng.random((128,), dtype=np.float32)
+    return DenseVector(rng.random((128,), dtype=np.float32))
 
 
 class Document(Table, kw_only=True):
@@ -35,6 +35,7 @@ class Chunk(Table, kw_only=True):
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
     vector: DenseVector
+    keyword: Keyword
 
 
 @pytest.fixture(name="registry")
@@ -76,8 +77,8 @@ def test_foreign_key(registry):
         Document(text="hello there"),
     ]
     chunks = [
-        Chunk(doc_id=1, text="hello", vector=gen_vector()),
-        Chunk(doc_id=1, text="world", vector=gen_vector()),
+        Chunk(doc_id=1, text="hello", keyword=Keyword("hello"), vector=gen_vector()),
+        Chunk(doc_id=1, text="world", keyword=Keyword("world"), vector=gen_vector()),
     ]
     for record in docs + chunks:
         registry.insert(record)
@@ -97,7 +98,10 @@ def test_injection(registry):
 
     @registry.inject(input=Document, output=Chunk)
     def create_chunk(uid: int, text: str) -> list[Chunk]:
-        return [Chunk(doc_id=uid, text=t, vector=gen_vector()) for t in text.split()]
+        return [
+            Chunk(doc_id=uid, text=t, keyword=Keyword(t), vector=gen_vector())
+            for t in text.split()
+        ]
 
     text = "hello world what happened to vector search"
     create_doc(text)
@@ -111,9 +115,11 @@ def test_injection(registry):
 
     # test search
     topk = 3
-    res = registry.search(Chunk, gen_vector(), topk=topk)
-    assert len(res) == topk
-    assert all(chunk.text in text for chunk in res)
+    vec_res = registry.search_by_vector(Chunk, gen_vector(), topk=topk)
+    assert len(vec_res) == topk
+    assert all(chunk.text in text for chunk in vec_res)
+    text_res = registry.search_by_keyword(Chunk, "vector", topk=topk)
+    assert len(text_res) == 1
 
 
 @pytest.mark.db
@@ -126,7 +132,13 @@ def test_pipeline(registry):
     def create_chunk(uid: int, text: str) -> list[Chunk]:
         nums = [int(x) for x in text.split()]
         return [
-            Chunk(doc_id=uid, text=f"num[{num}]", vector=gen_vector()) for num in nums
+            Chunk(
+                doc_id=uid,
+                text=f"num[{num}]",
+                keyword=Keyword(num),
+                vector=gen_vector(),
+            )
+            for num in nums
         ]
 
     correct = "1 2 3 4 5"

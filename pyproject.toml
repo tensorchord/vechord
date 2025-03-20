@@ -34,6 +34,9 @@ spacy = [
 wordllama = [
     "wordllama>=0.3.8.post20",
 ]
+cohere = [
+    "cohere>=5.14.0",
+]
 
 [build-system]
 requires = ["pdm-backend"]

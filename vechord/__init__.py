@@ -11,10 +11,12 @@ from vechord.extract import GeminiExtractor, SimpleExtractor
 from vechord.load import LocalLoader
 from vechord.model import Document
 from vechord.registry import VechordRegistry
+from vechord.rerank import CohereReranker
 from vechord.service import create_web_app
 from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
 
 __all__ = [
+    "CohereReranker",
     "Document",
     "ForeignKey",
     "GeminiAugmenter",

@@ -1,3 +1,5 @@
+# Vechord
+
 Python RAG framework built on top of PostgreSQL and [VectorChord](https://github.com/tensorchord/VectorChord/).
 
 ## Installation
@@ -16,7 +18,7 @@ pip install vechord
 ## Development
 
 ```bash
-docker run --rm -d --name vechord -e POSTGRES_PASSWORD=postgres -p 5432:5432 tensorchord/vchord-postgres:pg17-v0.2.1
+docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord_bm25-postgres:pg17-v0.1.1
 envd up
 # inside the envd env, sync all the dependencies
 make sync

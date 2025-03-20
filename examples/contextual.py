@@ -67,7 +67,12 @@ def split_document(uid: int, text: str) -> list[Chunk]:
     chunker = RegexChunker(overlap=0)
     chunks = chunker.segment(text)
     return [
-        Chunk(doc_uid=uid, seq_id=i, text=chunk, vector=emb.vectorize_chunk(chunk))
+        Chunk(
+            doc_uid=uid,
+            seq_id=i,
+            text=chunk,
+            vector=DenseVector(emb.vectorize_chunk(chunk)),
+        )
         for i, chunk in enumerate(chunks)
     ]
 
@@ -89,7 +94,9 @@ def context_embedding(uid: int, text: str) -> list[ContextChunk]:
     ]
     return [
         ContextChunk(
-            chunk_uid=chunk_uid, text=augmented, vector=emb.vectorize_chunk(augmented)
+            chunk_uid=chunk_uid,
+            text=augmented,
+            vector=DenseVector(emb.vectorize_chunk(augmented)),
         )
         for (chunk_uid, augmented) in zip(
             [c.uid for c in chunks], context_chunks, strict=False
@@ -99,22 +106,20 @@ def context_embedding(uid: int, text: str) -> list[ContextChunk]:
 
 def query_chunk(query: str) -> list[Chunk]:
     vector = emb.vectorize_query(query)
-    res: list[Chunk] = vr.search(
+    res: list[Chunk] = vr.search_by_vector(
         Chunk,
         vector,
         topk=5,
-        return_vector=False,
     )
     return res
 
 
 def query_context_chunk(query: str) -> list[ContextChunk]:
     vector = emb.vectorize_query(query)
-    res: list[ContextChunk] = vr.search(
+    res: list[ContextChunk] = vr.search_by_vector(
         ContextChunk,
         vector,
         topk=5,
-        return_vector=False,
     )
     return res
 
@@ -125,7 +130,7 @@ def evaluate(uid: int, doc_uid: int, text: str):
     doc: Document = vr.select_by(Document.partial_init(uid=doc_uid))[0]
     query = evaluator.produce_query(doc.text, text)
     retrieved = query_chunk(query)
-    score = evaluator.evaluate_one(uid, [r.uid for r in retrieved])
+    score = evaluator.evaluate_one(str(uid), [str(r.uid) for r in retrieved])
     return score
 
 
