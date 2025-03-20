@@ -6,12 +6,14 @@ import httpx
 from vechord.chunk import RegexChunker
 from vechord.embedding import SpacyDenseEmbedding
 from vechord.registry import VechordRegistry
+from vechord.rerank import CohereReranker
 from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 URL = "https://paulgraham.com/{}.html"
 DenseVector = Vector[96]
 emb = SpacyDenseEmbedding()
 chunker = RegexChunker(size=1024, overlap=0)
+reranker = CohereReranker()
 
 
 class EssayParser(HTMLParser):
@@ -76,13 +78,18 @@ def chunk_document(uid: int, text: str) -> list[Chunk]:
     ]
 
 
+def search_and_rerank(query: str, topk: int) -> list[Chunk]:
+    text_retrieves = vr.search_by_keyword(Chunk, query, topk=topk)
+    vec_retrievse = vr.search_by_vector(Chunk, emb.vectorize_query(query), topk=topk)
+    chunks = list(
+        {chunk.uid: chunk for chunk in text_retrieves + vec_retrievse}.values()
+    )
+    indices = reranker.rerank(query, [chunk.text for chunk in chunks])
+    return [chunks[i] for i in indices[:topk]]
+
+
 if __name__ == "__main__":
     load_document("smart")
     chunk_document()
-
-    vec = vr.search_by_vector(Chunk, emb.vectorize_query("smart"), topk=3)
-    text = vr.search_by_keyword(Chunk, "smart", topk=3)
-
-    from rich import print
-
-    print(vec, text)
+    chunks = search_and_rerank("smart", 3)
+    print(chunks)

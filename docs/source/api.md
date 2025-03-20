@@ -62,6 +62,14 @@
    :show-inheritance:
 ```
 
+## Rerank
+
+```{eval-rst}
+.. automodule:: vechord.rerank
+   :members:
+   :show-inheritance:
+```
+
 ## Service
 
 ```{eval-rst}

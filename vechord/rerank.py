@@ -6,19 +6,32 @@ from vechord.spec import Table
 
 class BaseReranker(ABC):
     @abstractmethod
-    def rerank(self, chunks: list[str]) -> list[str]:
+    def rerank(self, query: str, chunks: list[str]) -> list[str]:
+        """Return the indices of the reranked chunks."""
         raise NotImplementedError
 
 
 class CohereReranker(BaseReranker):
-    def __init__(self):
-        super().__init__()
+    """Rerank chunks using Cohere API (requires env `COHERE_API_KEY`)."""
 
-    def rerank(self, chunks: list[str]) -> list[str]:
-        raise NotImplementedError
+    def __init__(self, model: str = "rerank-v3.5"):
+        import cohere
+
+        self.client = cohere.ClientV2()
+        self.model = model
+
+    def rerank(self, query: str, chunks: list[str]) -> list[int]:
+        resp = self.client.rerank(
+            model=self.model,
+            query=query,
+            documents=chunks,
+        )
+        return [item.index for item in resp.results]
 
 
 class ReciprocalRankFusion:
+    """Fuse chunks using reciprocal rank."""
+
     def __init__(self, k: int = 60):
         self.k = k
 

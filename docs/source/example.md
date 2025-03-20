@@ -23,3 +23,9 @@
 ```{include} ../../examples/essay.py
 :code: python
 ```
+
+## Hybrid search with rerank
+
+```{include} ../../examples/hybrid.py
+:code: python
+```
