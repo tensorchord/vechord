@@ -193,6 +193,8 @@ def type_to_psql(typ) -> str:
             if issubclass(m, ForeignKey):
                 schema.append(m.schema())
         return " ".join(schema)
+    elif get_origin(typ) is list:
+        return f"{type_to_psql(typ.__args__[0])}[]"
     if isinstance(typ, VechordType):
         return typ.schema()
     if typ in TYPE_TO_PSQL:
@@ -230,6 +232,16 @@ class Table(Storage):
         """Get the vector column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
+                return name
+        return None
+
+    @classmethod
+    def multivec_column(cls) -> Optional[str]:
+        """Get the multivec column name."""
+        for name, typ in get_type_hints(cls, include_extras=True).items():
+            if get_origin(typ) is list and issubclass(
+                typ.__args__[0].__class__, VectorMeta
+            ):
                 return name
         return None
 

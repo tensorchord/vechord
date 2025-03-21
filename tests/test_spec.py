@@ -5,7 +5,7 @@ import msgspec
 import numpy as np
 import pytest
 
-from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 
 class Document(Table, kw_only=True):
@@ -20,6 +20,8 @@ class Chunk(Table, kw_only=True):
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
     vec: Vector[128]
+    multivec: list[Vector[128]]
+    keyword: Keyword
 
 
 @pytest.mark.parametrize("table", [Document, Chunk])
@@ -38,6 +40,8 @@ def test_table_cls_methods():
 
     assert Document.vector_column() is None
     assert Chunk.vector_column() == "vec"
+    assert Chunk.multivec_column() == "multivec"
+    assert Chunk.keyword_column() == "keyword"
 
     def find_schema_by_name(schema, name):
         for n, t in schema:

@@ -65,6 +65,13 @@ class VechordRegistry:
                     table.name(),
                     vector_column,
                 )
+            if multivec_column := table.multivec_column():
+                self.client.create_multivec_index(table.name(), multivec_column)
+                logger.debug(
+                    "create multivec index for %s.%s if not exists",
+                    table.name(),
+                    multivec_column,
+                )
             if keyword_column := table.keyword_column():
                 self.client.create_keyword_index(table.name(), keyword_column)
                 logger.debug(
@@ -152,6 +159,44 @@ class VechordRegistry:
             cls.name(),
             vec_col,
             vec,
+            topk=topk,
+            return_fields=fields,
+        )
+        return [
+            cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
+            for r in res
+        ]
+
+    def search_by_multivec(
+        self,
+        cls: type[Table],
+        multivec: np.ndarray,
+        topk: int = 10,
+        return_fields: Optional[Sequence[str]] = None,
+        max_maxsim_tuples: int = 1000,
+    ) -> list[Table]:
+        """Search the multivec for the given `Table` class.
+
+        Args:
+            cls: the `Table` class to be searched.
+            multivec: the multivec to be searched.
+            topk: the number of results to be returned.
+            max_maxsim_tuples: the maximum number of tuples to be considered for
+                the each vector in the multivec.
+            return_fields: the fields to be returned, if not set, all the
+                non-[vector,keyword] fields will be returned.
+        """
+        if not issubclass(cls, Table):
+            raise ValueError(f"unsupported class {cls}")
+        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        multivec_col = cls.multivec_column()
+        if multivec_col is None:
+            raise ValueError(f"no multivec column found in {cls}")
+        res = self.client.query_multivec(
+            cls.name(),
+            multivec_col,
+            multivec,
+            max_maxsim_tuples=max_maxsim_tuples,
             topk=topk,
             return_fields=fields,
         )

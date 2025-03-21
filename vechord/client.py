@@ -91,6 +91,23 @@ class VectorChordClient:
                 )
             )
 
+    def create_multivec_index(self, name: str, column: str):
+        config = "build.internal.lists = []"
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(
+                sql.SQL(
+                    "CREATE INDEX IF NOT EXISTS {index} ON "
+                    "{table} USING vchordrq ({column} vector_maxsim_ip_ops) WITH "
+                    "(options = $${config}$$);"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    index=sql.Identifier(f"{self.ns}_{name}_{column}_multivec_idx"),
+                    column=sql.Identifier(column),
+                    config=sql.SQL(config),
+                )
+            )
+
     def _keyword_index_name(self, name: str, column: str):
         return f"{self.ns}_{name}_{column}_bm25_idx"
 
@@ -198,6 +215,36 @@ class VectorChordClient:
             (vec, topk),
         )
         return [row for row in cursor.fetchall()]
+
+    def query_multivec(  # noqa: PLR0913
+        self,
+        name: str,
+        multivec_col: str,
+        vec: np.ndarray,
+        max_maxsim_tuples: int,
+        return_fields: list[str],
+        topk: int = 10,
+    ):
+        columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute("SET vchordrq.probes = '';")
+            cursor.execute(
+                sql.SQL("SET vchordrq.max_maxsim_tuples = {};").format(
+                    sql.Literal(max_maxsim_tuples)
+                )
+            )
+            cursor = cursor.execute(
+                sql.SQL(
+                    "SELECT {columns} FROM {table} ORDER BY {multivec_col} @# %s LIMIT %s;"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    columns=columns,
+                    multivec_col=sql.Identifier(multivec_col),
+                ),
+                (vec, topk),
+            )
+            return [row for row in cursor.fetchall()]
 
     def query_keyword(  # noqa: PLR0913
         self,

@@ -8,12 +8,19 @@ Python RAG framework built on top of PostgreSQL and [VectorChord](https://github
 pip install vechord
 ```
 
+## Features
+
+- [x] vector search with RaBitQ
+- [x] keyworx search with BM25 ranking
+- [x] multivec search
+
 ## Examples
 
 - [beir.py](examples/beir.py): the most flexible way to use the library (loading, indexing, querying and evaluation)
 - [web.py](examples/web.py): build a web application with from the defined tables and pipeline
 - [essay.py](examples/essay.py): extract the content from Paul Graham's essays and evaluate the search results from LLM generated queries
 - [contextual.py](examples/contextual.py): contextual retrieval example
+- [hybrid.py](examples/hybrid.py): hybrid search that rerank the results from vector search with keyword search
 
 ## Development
 
