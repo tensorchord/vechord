@@ -234,7 +234,7 @@ class VectorChordClient:
                     sql.Literal(max_maxsim_tuples)
                 )
             )
-            cursor = cursor.execute(
+            cursor.execute(
                 sql.SQL(
                     "SELECT {columns} FROM {table} ORDER BY {multivec_col} @# %s LIMIT %s;"
                 ).format(

@@ -140,16 +140,19 @@ def test_multi_vec_maxsim(registry):
         )
 
     text = "the quick brown fox jumps over the lazy dog"
-    create_sentence(text)
+    num = 32
+    for _ in range(num):
+        create_sentence(text)
     sentence = registry.select_by(Sentence.partial_init())
-    assert len(sentence) == 1
+    assert len(sentence) == num
     assert len(sentence[0].vector) == len(text.split())
 
     topk = 3
     for dim in range(1, 10):
-        registry.search_by_multivec(
+        res = registry.search_by_multivec(
             Sentence, [gen_vector() for _ in range(dim)], topk=topk
         )
+        assert len(res) == topk
 
 
 @pytest.mark.db
