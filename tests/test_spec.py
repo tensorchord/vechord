@@ -24,7 +24,12 @@ class Chunk(Table, kw_only=True):
     keyword: Keyword
 
 
-@pytest.mark.parametrize("table", [Document, Chunk])
+class Simple(Table):
+    uid: int
+    text: str
+
+
+@pytest.mark.parametrize("table", [Document, Chunk, Simple])
 def test_storage_cls_methods(table: type[Table]):
     assert table.name() == table.__name__.lower()
     assert "uid" in table.fields()
@@ -32,6 +37,9 @@ def test_storage_cls_methods(table: type[Table]):
     t = table.partial_init()
     for field in t.fields():
         assert getattr(t, field) is msgspec.UNSET
+
+    # UNSET won't appear in the `todict` result
+    assert t.todict() == {}
 
 
 def test_table_cls_methods():

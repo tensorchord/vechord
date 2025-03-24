@@ -286,7 +286,11 @@ class Table(Storage):
         defaults = getattr(self, "__struct_defaults__", None)
         fields = self.fields()
         if not defaults:
-            return {k: getattr(self, k) for k in fields}
+            return {
+                k: v
+                for k, v in zip(fields, (getattr(self, f) for f in fields), strict=True)
+                if v is not msgspec.UNSET
+            }
         # ignore default values
         res = {}
         for k, d in zip(fields, defaults, strict=False):

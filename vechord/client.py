@@ -146,8 +146,12 @@ class VectorChordClient:
         )
         if kvs:
             condition = sql.SQL(" AND ").join(
-                sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
-                for col in kvs
+                sql.SQL("{} IS NULL").format(sql.Identifier(col))
+                if val is None
+                else sql.SQL("{} = {}").format(
+                    sql.Identifier(col), sql.Placeholder(col)
+                )
+                for col, val in kvs.items()
             )
             query += sql.SQL(" WHERE {condition}").format(condition=condition)
         elif from_buffer:
