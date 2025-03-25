@@ -4,6 +4,15 @@ dynamic = ["version"]
 description = "VectorChord Python SDK"
 readme = "README.md"
 requires-python = ">=3.10"
+classifiers = [
+    "Topic :: Database",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "defspec>=0.3.0",
     "falcon>=4.0.2",
@@ -18,6 +27,11 @@ dependencies = [
     "rich>=13.9.4",
 ]
 
+[project.urls]
+Homepage = "https://github.com/tensorchord/vechord"
+Documentation = "https://tensorchord.github.io/vechord/"
+Repository = "https://github.com/tensorchord/vechord.git"
+Issues = "https://github.com/tensorchord/vechord/issues"
 [project.scripts]
 
 [project.optional-dependencies]
