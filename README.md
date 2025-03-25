@@ -1,6 +1,23 @@
-# Vechord
+<div align="center">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="128" fill="none" viewBox="0 0 200 206">
+<defs><path id="a" stroke="#EAB711" d="M0-8h40"/></defs>
+<path stroke="#EAB711" stroke-width="16" d="M8 6v200M0 8h40M0 198h40M192 6v200"/>
+<use xlink:href="#a" stroke-width="16" transform="matrix(-1 0 0 1 200 16)"/>
+<use xlink:href="#a" stroke-width="16" transform="matrix(-1 0 0 1 200 206)"/>
+<path fill="#3776AB" d="m75.91 67.91 22.5 70.726h.863l22.545-70.727h21.818L111.545 161H86.182L54.045 67.91z"/>
+</svg>
 
-Python RAG framework built on top of PostgreSQL and [VectorChord](https://github.com/tensorchord/VectorChord/).
+<p>
+
+[![Python Check](https://github.com/tensorchord/vechord/actions/workflows/check.yml/badge.svg)](https://github.com/tensorchord/vechord/actions/workflows/check.yml)
+[![Pages](https://github.com/tensorchord/vechord/actions/workflows/pages.yml/badge.svg)]( tensorchord.github.io/vechord/)
+![GitHub License](https://img.shields.io/github/license/tensorchord/vechord)
+![PyPI - Version](https://img.shields.io/pypi/v/vechord)
+[![Discord](https://img.shields.io/discord/974584200327991326?&logoColor=white&color=5865F2&style=flat&logo=discord&cacheSeconds=60)](https://discord.gg/KqswhpVgdU)
+
+</p>
+<p><em>Turn PostgreSQL into your search engine in a Pythonic way.</em></p>
+</div>
 
 ## Installation
 
