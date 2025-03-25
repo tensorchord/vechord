@@ -35,8 +35,6 @@ jobs:
       with:
         enable-cache: true
         python-version: "3.12"
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@stable
     - name: Install dependencies
       run: |
         make sync

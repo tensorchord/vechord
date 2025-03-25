@@ -98,7 +98,7 @@ class VectorChordClient:
             cursor.execute(
                 sql.SQL(
                     "CREATE INDEX IF NOT EXISTS {index} ON "
-                    "{table} USING vchordrq ({column} vector_maxsim_ip_ops) WITH "
+                    "{table} USING vchordrq ({column} vector_maxsim_ops) WITH "
                     "(options = $${config}$$);"
                 ).format(
                     table=sql.Identifier(f"{self.ns}_{name}"),
