@@ -5,7 +5,7 @@ import msgspec
 import numpy as np
 import pytest
 
-from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 
 class Document(Table, kw_only=True):
@@ -20,9 +20,16 @@ class Chunk(Table, kw_only=True):
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
     vec: Vector[128]
+    multivec: list[Vector[128]]
+    keyword: Keyword
 
 
-@pytest.mark.parametrize("table", [Document, Chunk])
+class Simple(Table):
+    uid: int
+    text: str
+
+
+@pytest.mark.parametrize("table", [Document, Chunk, Simple])
 def test_storage_cls_methods(table: type[Table]):
     assert table.name() == table.__name__.lower()
     assert "uid" in table.fields()
@@ -31,6 +38,9 @@ def test_storage_cls_methods(table: type[Table]):
     for field in t.fields():
         assert getattr(t, field) is msgspec.UNSET
 
+    # UNSET won't appear in the `todict` result
+    assert t.todict() == {}
+
 
 def test_table_cls_methods():
     assert Document.primary_key() == "uid", Document
@@ -38,6 +48,8 @@ def test_table_cls_methods():
 
     assert Document.vector_column() is None
     assert Chunk.vector_column() == "vec"
+    assert Chunk.multivec_column() == "multivec"
+    assert Chunk.keyword_column() == "keyword"
 
     def find_schema_by_name(schema, name):
         for n, t in schema:

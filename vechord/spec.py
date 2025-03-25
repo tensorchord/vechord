@@ -193,6 +193,8 @@ def type_to_psql(typ) -> str:
             if issubclass(m, ForeignKey):
                 schema.append(m.schema())
         return " ".join(schema)
+    elif get_origin(typ) is list:
+        return f"{type_to_psql(typ.__args__[0])}[]"
     if isinstance(typ, VechordType):
         return typ.schema()
     if typ in TYPE_TO_PSQL:
@@ -234,6 +236,16 @@ class Table(Storage):
         return None
 
     @classmethod
+    def multivec_column(cls) -> Optional[str]:
+        """Get the multivec column name."""
+        for name, typ in get_type_hints(cls, include_extras=True).items():
+            if get_origin(typ) is list and issubclass(
+                typ.__args__[0].__class__, VectorMeta
+            ):
+                return name
+        return None
+
+    @classmethod
     def keyword_column(cls) -> Optional[str]:
         """Get the keyword column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
@@ -244,7 +256,7 @@ class Table(Storage):
     @classmethod
     def non_vec_columns(cls) -> Sequence[str]:
         """Get the column names that are not vector or keyword."""
-        exclude = (cls.vector_column(), cls.keyword_column())
+        exclude = (cls.vector_column(), cls.keyword_column(), cls.multivec_column())
         return tuple(field for field in cls.fields() if field not in exclude)
 
     @classmethod
@@ -274,7 +286,11 @@ class Table(Storage):
         defaults = getattr(self, "__struct_defaults__", None)
         fields = self.fields()
         if not defaults:
-            return {k: getattr(self, k) for k in fields}
+            return {
+                k: v
+                for k, v in zip(fields, (getattr(self, f) for f in fields), strict=True)
+                if v is not msgspec.UNSET
+            }
         # ignore default values
         res = {}
         for k, d in zip(fields, defaults, strict=False):

@@ -38,6 +38,12 @@ class Chunk(Table, kw_only=True):
     keyword: Keyword
 
 
+class Sentence(Table, kw_only=True):
+    uid: PrimaryKeyAutoIncrease | None = None
+    text: str
+    vector: list[DenseVector]
+
+
 @pytest.fixture(name="registry")
 def fixture_registry(request):
     registry = VechordRegistry(request.node.name, TEST_POSTGRES)
@@ -59,6 +65,10 @@ def test_insert_select_remove(registry):
     assert len(inserted) == len(docs)
     assert inserted[0].text == "hello world"
     assert inserted[1].text == "hello there"
+
+    # select with limit
+    one = registry.select_by(Document.partial_init(), limit=1)
+    assert len(one) == 1
 
     # select by id
     first = registry.select_by(Document.partial_init(uid=1))
@@ -113,13 +123,40 @@ def test_injection(registry):
     chunks = registry.select_by(Chunk.partial_init())
     assert len(chunks) == len(text.split())
 
-    # test search
     topk = 3
+    # vector search
     vec_res = registry.search_by_vector(Chunk, gen_vector(), topk=topk)
     assert len(vec_res) == topk
     assert all(chunk.text in text for chunk in vec_res)
+    # keyword search
     text_res = registry.search_by_keyword(Chunk, "vector", topk=topk)
     assert len(text_res) == 1
+
+
+@pytest.mark.db
+def test_multi_vec_maxsim(registry):
+    registry.register([Sentence])
+
+    @registry.inject(output=Sentence)
+    def create_sentence(text: str) -> Sentence:
+        return Sentence(
+            text=text, vector=[gen_vector() for _ in range(len(text.split()))]
+        )
+
+    text = "the quick brown fox jumps over the lazy dog"
+    num = 32
+    for _ in range(num):
+        create_sentence(text)
+    sentence = registry.select_by(Sentence.partial_init())
+    assert len(sentence) == num
+    assert len(sentence[0].vector) == len(text.split())
+
+    topk = 3
+    for dim in range(1, 10):
+        res = registry.search_by_multivec(
+            Sentence, [gen_vector() for _ in range(dim)], topk=topk
+        )
+        assert len(res) == topk
 
 
 @pytest.mark.db
