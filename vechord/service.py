@@ -128,10 +128,10 @@ def create_web_app(registry: VechordRegistry) -> App:
     """Create a `Falcon` WSGI application for the given registry.
 
     This includes the:
-    - health check
-    - table GET/POST/DELETE
-    - pipeline POST
-    - OpenAPI spec and Swagger UI
+    - health check [GET](/)
+    - tables [GET/POST/DELETE](/api/table/{table_name})
+    - pipeline in a transaction [POST](/api/pipeline)
+    - OpenAPI spec and Swagger UI [GET](/openapi/swagger)
     """
     app = App()
     app.add_route("/", HealthCheck())

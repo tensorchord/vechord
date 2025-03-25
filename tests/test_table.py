@@ -66,6 +66,10 @@ def test_insert_select_remove(registry):
     assert inserted[0].text == "hello world"
     assert inserted[1].text == "hello there"
 
+    # select with limit
+    one = registry.select_by(Document.partial_init(), limit=1)
+    assert len(one) == 1
+
     # select by id
     first = registry.select_by(Document.partial_init(uid=1))
     assert len(first) == 1

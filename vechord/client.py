@@ -131,6 +131,7 @@ class VectorChordClient:
         raw_columns: Sequence[str],
         kvs: Optional[dict[str, Any]] = None,
         from_buffer: bool = False,
+        limit: Optional[int] = None,
     ):
         """Select from db table with optional key-value condition or from un-committed
         transaction buffer.
@@ -156,6 +157,8 @@ class VectorChordClient:
             query += sql.SQL(" WHERE {condition}").format(condition=condition)
         elif from_buffer:
             query += sql.SQL(" WHERE xmin = pg_current_xact_id()::xid;")
+        if limit:
+            query += sql.SQL(" LIMIT {}").format(sql.Literal(limit))
         cursor.execute(query, kvs)
         return [row for row in cursor.fetchall()]
 

@@ -4,14 +4,14 @@ from typing import Annotated
 import httpx
 
 from vechord.chunk import RegexChunker
-from vechord.embedding import SpacyDenseEmbedding
+from vechord.embedding import GeminiDenseEmbedding
 from vechord.registry import VechordRegistry
 from vechord.rerank import CohereReranker
 from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
 
 URL = "https://paulgraham.com/{}.html"
-DenseVector = Vector[96]
-emb = SpacyDenseEmbedding()
+DenseVector = Vector[768]
+emb = GeminiDenseEmbedding()
 chunker = RegexChunker(size=1024, overlap=0)
 reranker = CohereReranker()
 

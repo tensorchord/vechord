@@ -80,6 +80,7 @@ def chunk_document(uid: int, text: str) -> list[Chunk]:
 
 
 if __name__ == "__main__":
+    # this pipeline will be used in the web app, or you can run it with `vr.run()`
     vr.set_pipeline([load_document, chunk_document])
     app = create_web_app(vr)
 

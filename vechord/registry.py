@@ -105,7 +105,10 @@ class VechordRegistry:
             return self.pipeline[-1]()
 
     def select_by(
-        self, obj: Table, fields: Optional[Sequence[str]] = None
+        self,
+        obj: Table,
+        fields: Optional[Sequence[str]] = None,
+        limit: Optional[int] = None,
     ) -> list[Table]:
         """Retrieve the requested fields for the given object stored in the DB.
 
@@ -114,6 +117,8 @@ class VechordRegistry:
                 instance, which means given values will be used for filtering.
             fields: the fields to be retrieved, if not set, all the fields will be
                 retrieved.
+            limit: the maximum number of results to be returned, if not set, all
+                the results will be returned.
         """
         if not isinstance(obj, Table):
             raise ValueError(f"unsupported class {type(obj)}")
@@ -127,7 +132,7 @@ class VechordRegistry:
             fields = cls_fields
 
         kvs = obj.todict()
-        res = self.client.select(cls.name(), fields, kvs)
+        res = self.client.select(cls.name(), fields, kvs, limit=limit)
         return [
             cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
             for r in res
