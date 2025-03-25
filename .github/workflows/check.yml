@@ -3,8 +3,21 @@ name: Python Check
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - 'vechord/**'
+      - 'examples/**'
+      - '.github/workflows/check.yml'
+      - 'pyproject.toml'
+      - 'Makefile'
   pull_request:
     branches: [ "main" ]
+    paths:
+      - 'vechord/**'
+      - 'examples/**'
+      - '.github/workflows/check.yml'
+      - 'pyproject.toml'
+      - 'Makefile'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,8 +39,9 @@ jobs:
     - name: Test
       env:
         PYTEST_ADDOPTS: -s
+        IMAGE: kemingy/vechord:latest
       run: |
-        docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres --health-cmd="pg_isready -U postgres" --health-interval=1s --health-timeout=1s --health-retries=5 ghcr.io/tensorchord/vchord_bm25-postgres:pg17-v0.1.1
+        docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres --health-cmd="pg_isready -U postgres" --health-interval=1s --health-timeout=1s --health-retries=5 ${IMAGE}
 
         # Wait for the container to be healthy
         for i in {1..10}; do

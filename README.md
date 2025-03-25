@@ -10,9 +10,9 @@ pip install vechord
 
 ## Features
 
-- [x] vector search with RaBitQ
-- [x] keyworx search with BM25 ranking
-- [x] multivec search
+- [x] vector search with RaBitQ (powered by [VectorChord][vectorchord])
+- [x] multivec search (powered by [VectorChord][vectorchord])
+- [x] keyworx search with BM25 ranking (powered by [VectorChord-bm25][vectorchord-bm25])
 
 ## Examples
 
@@ -32,3 +32,6 @@ make sync
 # format the code
 make format
 ```
+
+[vectorchord]: https://github.com/tensorchord/VectorChord/
+[vectorchord-bm25]: https://github.com/tensorchord/VectorChord-bm25
