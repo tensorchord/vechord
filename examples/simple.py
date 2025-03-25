@@ -19,7 +19,7 @@ if __name__ == "__main__":
 
     # add a document
     text = "my personal long note"
-    doc = Document(title="note", text=text, emb=DenseVector(emb.vectorize_chunk(text)))
+    doc = Document(title="note", text=text, vec=DenseVector(emb.vectorize_chunk(text)))
     vr.insert(doc)
 
     # load

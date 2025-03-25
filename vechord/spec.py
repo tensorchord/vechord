@@ -256,7 +256,7 @@ class Table(Storage):
     @classmethod
     def non_vec_columns(cls) -> Sequence[str]:
         """Get the column names that are not vector or keyword."""
-        exclude = (cls.vector_column(), cls.keyword_column())
+        exclude = (cls.vector_column(), cls.keyword_column(), cls.multivec_column())
         return tuple(field for field in cls.fields() if field not in exclude)
 
     @classmethod
