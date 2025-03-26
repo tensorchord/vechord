@@ -1,4 +1,3 @@
-from html.parser import HTMLParser
 from typing import Annotated
 
 import httpx
@@ -6,6 +5,7 @@ import httpx
 from vechord.chunk import RegexChunker
 from vechord.embedding import GeminiDenseEmbedding
 from vechord.evaluate import GeminiEvaluator
+from vechord.extract import SimpleExtractor
 from vechord.registry import VechordRegistry
 from vechord.spec import (
     ForeignKey,
@@ -21,25 +21,7 @@ TOP_K = 10
 DenseVector = Vector[768]
 emb = GeminiDenseEmbedding()
 evaluator = GeminiEvaluator()
-
-
-class EssayParser(HTMLParser):
-    def __init__(self, *, convert_charrefs: bool = ...) -> None:
-        super().__init__(convert_charrefs=convert_charrefs)
-        self.content = []
-        self.skip = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("script", "style"):
-            self.skip = True
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in ("script", "style"):
-            self.skip = False
-
-    def handle_data(self, data: str) -> None:
-        if not self.skip:
-            self.content.append(data.strip())
+extractor = SimpleExtractor()
 
 
 class Chunk(Table, kw_only=True):
@@ -66,9 +48,7 @@ vr.register([Chunk, Query])
 
 with httpx.Client() as client:
     resp = client.get(URL.format(ARTICLE))
-parser = EssayParser()
-parser.feed(resp.text)
-doc = "\n".join(t for t in parser.content if t)
+doc = extractor.extract_html(resp.text)
 
 
 @vr.inject(output=Chunk)

@@ -10,11 +10,11 @@ class Entity(msgspec.Struct, kw_only=True, frozen=True):
 
 class Document(msgspec.Struct, kw_only=True):
     ext: str
-    path: str
-    digest: str
     data: bytes
-    updated_at: datetime = msgspec.field(default_factory=datetime.now)
+    path: str = ""
+    digest: str = ""
     source: str = ""
+    updated_at: datetime = msgspec.field(default_factory=datetime.now)
 
 
 class SparseEmbedding(msgspec.Struct, kw_only=True, frozen=True):

@@ -38,16 +38,24 @@ napoleon_include_init_with_doc = True
 napoleon_use_admonition_for_references = True
 # opengraph
 ogp_site_url = "https://github.com/tensorchord/vechord"
-ogp_image = "https://github.com/tensorchord/vechord"
+ogp_image = (
+    "https://github.com/user-attachments/assets/7b2819bb-1a7d-4b84-9ff9-d0c4d5340da9"
+)
 # sitemap
 html_baseurl = "https://tensorchord.github.io/vechord/"
 html_extra_path = ["robots.txt"]
+# myst
+myst_enable_extensions = ["tasklist"]
+myst_enable_checkboxes = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 html_theme = "furo"
 html_static_path = ["_static"]
+html_logo = (
+    "https://github.com/user-attachments/assets/7b2819bb-1a7d-4b84-9ff9-d0c4d5340da9"
+)
 html_theme_options = {
     "sidebar_hide_name": True,
     "navigation_with_keys": True,

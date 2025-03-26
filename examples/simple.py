@@ -1,3 +1,5 @@
+from typing import Optional
+
 from vechord.embedding import GeminiDenseEmbedding
 from vechord.registry import VechordRegistry
 from vechord.spec import PrimaryKeyAutoIncrease, Table, Vector
@@ -6,7 +8,7 @@ DenseVector = Vector[768]
 
 
 class Document(Table, kw_only=True):
-    uid: PrimaryKeyAutoIncrease | None = None
+    uid: Optional[PrimaryKeyAutoIncrease] = None
     title: str = ""
     text: str
     vec: DenseVector
