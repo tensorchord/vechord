@@ -126,6 +126,3 @@ class GeminiExtractor(SimpleExtractor):
             text.append(response.text)
 
         return "\n".join(text)
-
-    def extract_html(self, text: str) -> str:
-        return super().extract_html(text)
