@@ -1,5 +1,11 @@
 # Examples
 
+## Simple demo
+
+```{include} ../../examples/simple.py
+:code: python
+```
+
 ## BEIR evaluation
 
 ```{include} ../../examples/beir.py

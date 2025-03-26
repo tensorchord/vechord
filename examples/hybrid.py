@@ -1,10 +1,10 @@
-from html.parser import HTMLParser
 from typing import Annotated
 
 import httpx
 
 from vechord.chunk import RegexChunker
 from vechord.embedding import GeminiDenseEmbedding
+from vechord.extract import SimpleExtractor
 from vechord.registry import VechordRegistry
 from vechord.rerank import CohereReranker
 from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
@@ -14,25 +14,7 @@ DenseVector = Vector[768]
 emb = GeminiDenseEmbedding()
 chunker = RegexChunker(size=1024, overlap=0)
 reranker = CohereReranker()
-
-
-class EssayParser(HTMLParser):
-    def __init__(self, *, convert_charrefs: bool = ...) -> None:
-        super().__init__(convert_charrefs=convert_charrefs)
-        self.content = []
-        self.skip = False
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("script", "style"):
-            self.skip = True
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in ("script", "style"):
-            self.skip = False
-
-    def handle_data(self, data: str) -> None:
-        if not self.skip:
-            self.content.append(data.strip())
+extractor = SimpleExtractor()
 
 
 class Document(Table, kw_only=True):
@@ -59,9 +41,7 @@ def load_document(title: str) -> Document:
         resp = client.get(URL.format(title))
         if resp.is_error:
             raise RuntimeError(f"Failed to fetch the document `{title}`")
-    parser = EssayParser()
-    parser.feed(resp.text)
-    return Document(title=title, text="\n".join(t for t in parser.content if t))
+        return Document(title=title, text=extractor.extract_html(resp.text))
 
 
 @vr.inject(input=Document, output=Chunk)

@@ -19,6 +19,7 @@ from vechord.spec import (
 
 emb = GeminiDenseEmbedding()
 DenseVector = Vector[768]
+extractor = SimpleExtractor()
 
 
 class Document(Table, kw_only=True):
@@ -50,7 +51,6 @@ vr.register([Document, Chunk, ContextChunk])
 @vr.inject(output=Document)
 def load_from_dir(dirpath: str) -> list[Document]:
     loader = LocalLoader(dirpath, include=[".pdf"])
-    extractor = SimpleExtractor()
     return [
         Document(
             digest=doc.digest,

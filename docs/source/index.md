@@ -6,7 +6,10 @@
       Python RAG framework built on top of PostgreSQL and VectorChord.
 ```
 
-Vechord is a Python RAG framework built on top of PostgreSQL and [VectorChord](https://github.com/tensorchord/VectorChord/).
+```{include} ../../README.md
+:relative-docs: examples/
+:relative-images:
+```
 
 ## Installation
 
@@ -31,6 +34,7 @@ caption: Project Links
 ---
 
 GitHub <https://github.com/tensorchord/vechord>
+Discord <https://discord.gg/KqswhpVgdU>
 ```
 
 ## Indices
