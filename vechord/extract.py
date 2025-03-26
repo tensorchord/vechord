@@ -49,7 +49,7 @@ class BaseExtractor(ABC):
         if doc.ext == ".txt":
             text = doc.data.decode("utf-8")
         elif doc.ext == ".pdf":
-            text = self.extract_pdf(doc)
+            text = self.extract_pdf(doc.data)
         elif doc.ext == ".html":
             text = self.extract_html(doc.data.decode("utf-8"))
         else:
@@ -67,9 +67,9 @@ class SimpleExtractor(BaseExtractor):
     def name(self) -> str:
         return "basic_extractor"
 
-    def extract_pdf(self, doc: Document) -> str:
+    def extract_pdf(self, doc: bytes) -> str:
         """Extract text from PDF using pypdfium2."""
-        pdf = pdfium.PdfDocument(doc.data)
+        pdf = pdfium.PdfDocument(doc)
         text = []
         for page in pdf:
             text.append(page.get_textpage().get_text_bounded())
@@ -127,5 +127,5 @@ class GeminiExtractor(SimpleExtractor):
 
         return "\n".join(text)
 
-    def extract_html(self, url: str) -> str:
-        return super().extract_html(url)
+    def extract_html(self, text: str) -> str:
+        return super().extract_html(text)
