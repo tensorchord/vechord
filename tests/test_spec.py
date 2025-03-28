@@ -5,7 +5,16 @@ import msgspec
 import numpy as np
 import pytest
 
-from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import (
+    ForeignKey,
+    Keyword,
+    MultiVectorIndex,
+    PrimaryKeyAutoIncrease,
+    Table,
+    Vector,
+    VectorDistance,
+    VectorIndex,
+)
 
 
 class Document(Table, kw_only=True):
@@ -47,9 +56,9 @@ def test_table_cls_methods():
     assert Chunk.primary_key() == "uid", Chunk
 
     assert Document.vector_column() is None
-    assert Chunk.vector_column() == "vec"
-    assert Chunk.multivec_column() == "multivec"
-    assert Chunk.keyword_column() == "keyword"
+    assert Chunk.vector_column().name == "vec"
+    assert Chunk.multivec_column().name == "multivec"
+    assert Chunk.keyword_column().name == "keyword"
 
     def find_schema_by_name(schema, name):
         for n, t in schema:
@@ -77,3 +86,43 @@ def test_vector_type():
         Dense(np.random.rand(123))
 
     assert np.equal(Dense(np.ones(128)), Dense([1.0] * 128)).all()
+
+
+def test_index():
+    with pytest.raises(msgspec.ValidationError):
+        VectorIndex(distance="bug")
+
+    with pytest.raises(msgspec.ValidationError):
+        VectorIndex(lists="bug")
+
+    lists = 128
+    vec_idx = VectorIndex(distance="l2", lists=lists)
+    assert vec_idx.distance is VectorDistance.L2
+    assert vec_idx.lists == lists
+    assert vec_idx.op_symbol == "<->"
+    assert str(vec_idx.lists) in vec_idx.config()
+
+    multivec_idx = MultiVectorIndex(lists=1)
+    assert multivec_idx.lists == 1
+    assert MultiVectorIndex().config() == "build.internal.lists = []"
+
+
+def test_annotated_index():
+    lists = 8
+
+    class Sentence(Table, kw_only=True):
+        uid: PrimaryKeyAutoIncrease | None = None
+        text: str
+        vec: Annotated[Vector[128], VectorIndex(distance="cos", lists=lists)]
+        vecs: Annotated[list[Vector[128]], MultiVectorIndex(lists=lists)]
+
+    vec_col = Sentence.vector_column()
+    assert vec_col
+    assert vec_col.name == "vec"
+    assert vec_col.index.op_name == "vector_cosine_ops"
+    assert vec_col.index.lists == lists
+
+    multivec_col = Sentence.multivec_column()
+    assert multivec_col
+    assert multivec_col.name == "vecs"
+    assert multivec_col.index.lists == lists

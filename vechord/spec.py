@@ -1,3 +1,7 @@
+import dataclasses
+import enum
+import inspect
+from abc import ABC, abstractmethod
 from datetime import datetime
 from types import UnionType
 from typing import (
@@ -142,17 +146,16 @@ class Keyword(str):
     `bm25vector` in PostgreSQL.
     """
 
-    _tokenizer: Literal["Unicode", "Bert", "Tocken"] = "Bert"
+    _model: Literal["bert_base_uncased", "wiki_tocken"] = "bert_base_uncased"
 
     @classmethod
     def schema(cls) -> str:
         return "bm25vector"
 
     @classmethod
-    def with_tokenizer(
-        cls, tokenizer: Literal["Unicode", "Bert", "Tocken"]
-    ) -> Type["Keyword"]:
-        cls._tokenizer = tokenizer
+    def with_model(cls, model: Literal["bert_base_uncased", "wiki_tocken"]) -> Type:
+        """TODO: test this"""
+        cls._model = model
         return cls
 
 
@@ -168,17 +171,21 @@ TYPE_TO_PSQL = {
 }
 
 
-def is_optional_type(typ) -> bool:
+def is_optional_type(typ: Type) -> bool:
     return (get_origin(typ) is Union or get_origin(typ) is UnionType) and type(
         None
     ) in get_args(typ)
 
 
-def get_first_type_from_optional(typ) -> Type:
+def get_first_type_from_optional(typ: Type) -> Type:
     for arg in get_args(typ):
         if arg is not type(None):
             return arg
     raise ValueError(f"no non-None type in {typ}")
+
+
+def is_list_of_vector_type(typ: Type) -> bool:
+    return get_origin(typ) is list and issubclass(typ.__args__[0].__class__, VectorMeta)
 
 
 def type_to_psql(typ) -> str:
@@ -190,7 +197,7 @@ def type_to_psql(typ) -> str:
         origin = typ.__origin__
         schema = [type_to_psql(origin)]
         for m in meta:
-            if issubclass(m, ForeignKey):
+            if inspect.isclass(m) and issubclass(m, ForeignKey):
                 schema.append(m.schema())
         return " ".join(schema)
     elif get_origin(typ) is list:
@@ -200,6 +207,108 @@ def type_to_psql(typ) -> str:
     if typ in TYPE_TO_PSQL:
         return TYPE_TO_PSQL[typ]
     raise ValueError(f"unsupported type {typ}")
+
+
+class VectorDistance(enum.Enum):
+    L2 = "l2"
+    COS = "cos"
+    DOT = "dot"
+
+
+class BaseIndex(ABC):
+    name: str = ""
+    index: str = ""
+    op_name: str = ""
+    op_symbol: str = ""
+
+    def verify(self):
+        """This will construct a new data-only struct to verify all the fields.
+
+        This is to ensure that the `__post_init__` will not be called recursively.
+        """
+        fields = [
+            (
+                f.name,
+                f.type,
+                f.default
+                if f.default is not f.default_factory
+                else msgspec.field(default_factory=f.default_factory),
+            )
+            for f in dataclasses.fields(self)
+        ]
+        spec = msgspec.defstruct(f"Spec{self.__class__.__name__}", fields)
+        instance = msgspec.convert(dataclasses.asdict(self), spec)
+        for field in instance.__struct_fields__:
+            setattr(self, field, getattr(instance, field))
+
+    @abstractmethod
+    def config(self) -> str:
+        raise NotImplementedError
+
+
+class IndexColumn(msgspec.Struct, frozen=True, order=True):
+    name: str
+    index: BaseIndex
+
+
+@dataclasses.dataclass
+class VectorIndex(BaseIndex):
+    distance: VectorDistance = VectorDistance.L2
+    lists: int = 1
+
+    def __post_init__(self):
+        self.verify()
+        self.name = "vec_idx"
+        self.index = "vchordrq"
+        match self.distance:
+            case VectorDistance.L2:
+                self.op_symbol = "<->"
+                self.op_name = "vector_l2_ops"
+            case VectorDistance.COS:
+                self.op_symbol = "<=>"
+                self.op_name = "vector_cosine_ops"
+            case VectorDistance.DOT:
+                self.op_symbol = "<#>"
+                self.op_name = "vector_ip_ops"
+
+    def config(self):
+        is_l2 = self.distance == VectorDistance.L2
+        return f"""
+residual_quantization = {"true" if is_l2 else "false"}
+[build.internal]
+lists = [{self.lists}]
+spherical_centroids = {"false" if is_l2 else "true"}
+"""
+
+
+@dataclasses.dataclass
+class MultiVectorIndex(BaseIndex):
+    lists: Optional[int] = None
+
+    def __post_init__(self):
+        self.verify()
+        self.name = "multivec_idx"
+        self.index = "vchordrq"
+        self.op_name = "vector_maxsim_ops"
+        self.op_symbol = "@#"
+
+    def config(self):
+        return f"build.internal.lists = [{self.lists or ''}]"
+
+
+@dataclasses.dataclass
+class KeywordIndex(BaseIndex):
+    model: Literal["bert_base_uncased", "wiki_tocken"] = "bert_base_uncased"
+
+    def __post_init__(self):
+        self.verify()
+        self.name = "keyword_idx"
+        self.index = "bm25"
+        self.op_name = "bm25_ops"
+        self.op_symbol = "<&>"
+
+    def config(self):
+        return ""
 
 
 class Storage(msgspec.Struct):
@@ -228,35 +337,56 @@ class Table(Storage):
         return tuple((name, type_to_psql(typ)) for name, typ in hints.items())
 
     @classmethod
-    def vector_column(cls) -> Optional[str]:
+    def vector_column(cls) -> Optional[IndexColumn]:
         """Get the vector column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
-                return name
+                return IndexColumn(name, VectorIndex())
+            elif get_origin(typ) is Annotated and issubclass(
+                typ.__origin__.__class__, VectorMeta
+            ):
+                for m in typ.__metadata__:
+                    if isinstance(m, VectorIndex):
+                        return IndexColumn(name, m)
         return None
 
     @classmethod
-    def multivec_column(cls) -> Optional[str]:
+    def multivec_column(cls) -> Optional[IndexColumn]:
         """Get the multivec column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
-            if get_origin(typ) is list and issubclass(
-                typ.__args__[0].__class__, VectorMeta
-            ):
-                return name
+            if is_list_of_vector_type(typ):
+                return IndexColumn(name, MultiVectorIndex())
+            elif get_origin(typ) is Annotated:
+                inner_type = typ.__origin__
+                if is_list_of_vector_type(inner_type):
+                    for m in typ.__metadata__:
+                        if isinstance(m, MultiVectorIndex):
+                            return IndexColumn(name, m)
         return None
 
     @classmethod
-    def keyword_column(cls) -> Optional[str]:
+    def keyword_column(cls) -> Optional[IndexColumn]:
         """Get the keyword column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if typ is Keyword:
-                return name
+                return IndexColumn(name, KeywordIndex())
+            elif get_origin(typ) is Annotated and typ.__origin__ is Keyword:
+                for m in typ.__metadata__:
+                    if isinstance(m, KeywordIndex):
+                        return IndexColumn(name, m)
         return None
 
     @classmethod
     def non_vec_columns(cls) -> Sequence[str]:
         """Get the column names that are not vector or keyword."""
-        exclude = (cls.vector_column(), cls.keyword_column(), cls.multivec_column())
+        exclude = (
+            col.name if col else col
+            for col in (
+                cls.vector_column(),
+                cls.keyword_column(),
+                cls.multivec_column(),
+            )
+        )
         return tuple(field for field in cls.fields() if field not in exclude)
 
     @classmethod
@@ -264,7 +394,9 @@ class Table(Storage):
         """Get the keyword tokenizer."""
         for _, typ in get_type_hints(cls, include_extras=True).items():
             if typ is Keyword:
-                return typ._tokenizer
+                return typ._model
+            elif get_origin(typ) is Annotated and typ.__origin__ is Keyword:
+                return typ.__origin__._model
         return None
 
     @classmethod

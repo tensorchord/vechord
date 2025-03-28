@@ -126,6 +126,17 @@ vr.run("https://paulgraham.com/best.html")  # only accept the arguments for the 
 print(vr.search_by_vector(Chunk, emb.vectorize_query("startup")))
 ```
 
+### Customized Index Configuration
+
+```python
+from vechord.spec import VectorIndex
+
+class Chunk(Table, kw_only=True)
+    uid: Optional[PrimaryKeyAutoIncrease] = None
+    vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=128)]
+    text: str
+```
+
 ### HTTP Service
 
 This creates a WSGI application that can be served by any WSGI server.
