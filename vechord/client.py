@@ -7,7 +7,9 @@ import psycopg
 from pgvector.psycopg import register_vector
 from psycopg import sql
 
-from vechord.spec import Keyword
+from vechord.spec import IndexColumn, Keyword
+
+DEFAULT_TOKENIZER = ("bert_base_uncased", "wiki_tocken")
 
 active_cursor = contextvars.ContextVar("active_cursor", default=None)
 select_transaction_buffer = contextvars.ContextVar(
@@ -30,9 +32,14 @@ class VectorChordClient:
         self.ns = namespace
         self.url = url
         self.conn = psycopg.connect(url, autocommit=True)
-        self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
-        self.conn.execute("CREATE EXTENSION IF NOT EXISTS vchord_bm25 CASCADE")
-        self.conn.execute('SET search_path TO "$user", public, bm25_catalog')
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord_bm25")
+            cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_tokenizer")
+            cursor.execute(
+                'SET search_path TO "$user", public, bm25_catalog, tokenizer_catalog'
+            )
         register_vector(self.conn)
 
     @contextlib.contextmanager
@@ -69,61 +76,44 @@ class VectorChordClient:
                 )
             )
 
-    def create_vector_index(self, name: str, column: str):
-        config = """
-        residual_quantization = true
-        [build.internal]
-        lists = [1]
-        spherical_centroids = false
-        """
+    def create_tokenizer(self):
         with self.transaction():
             cursor = self.get_cursor()
-            cursor.execute(
-                sql.SQL(
-                    "CREATE INDEX IF NOT EXISTS {index} ON "
-                    "{table} USING vchordrq ({column} vector_l2_ops) WITH "
-                    "(options = $${config}$$);"
-                ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    index=sql.Identifier(f"{self.ns}_{name}_{column}_vec_idx"),
-                    column=sql.Identifier(column),
-                    config=sql.SQL(config),
-                )
-            )
+            try:
+                for name in DEFAULT_TOKENIZER:
+                    cursor.execute(
+                        sql.SQL(
+                            "SELECT create_tokenizer({name}, $$model={model}$$)"
+                        ).format(
+                            name=sql.Literal(name),
+                            model=sql.Identifier(name),
+                        )
+                    )
+            except psycopg.errors.DatabaseError as err:
+                if "already exists" not in str(err):
+                    raise
 
-    def create_multivec_index(self, name: str, column: str):
-        config = "build.internal.lists = []"
+    def create_index_if_not_exists(self, name: str, column: IndexColumn):
         with self.transaction():
             cursor = self.get_cursor()
-            cursor.execute(
-                sql.SQL(
-                    "CREATE INDEX IF NOT EXISTS {index} ON "
-                    "{table} USING vchordrq ({column} vector_maxsim_ops) WITH "
-                    "(options = $${config}$$);"
-                ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    index=sql.Identifier(f"{self.ns}_{name}_{column}_multivec_idx"),
-                    column=sql.Identifier(column),
-                    config=sql.SQL(config),
-                )
+            query = sql.SQL(
+                "CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
+                "USING {index} ({column} {op_name})"
+            ).format(
+                index_name=sql.Identifier(self._index_name(name, column)),
+                table=sql.Identifier(f"{self.ns}_{name}"),
+                index=sql.SQL(column.index.index),
+                column=sql.Identifier(column.name),
+                op_name=sql.SQL(column.index.op_name),
             )
-
-    def _keyword_index_name(self, name: str, column: str):
-        return f"{self.ns}_{name}_{column}_bm25_idx"
-
-    def create_keyword_index(self, name: str, column: str):
-        with self.transaction():
-            cursor = self.get_cursor()
-            cursor.execute(
-                sql.SQL(
-                    "CREATE INDEX IF NOT EXISTS {index} ON "
-                    "{table} USING bm25 ({column} bm25_ops);"
-                ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    index=sql.Identifier(self._keyword_index_name(name, column)),
-                    column=sql.Identifier(column),
+            if config := column.index.config():
+                query += sql.SQL(" WITH (options = $${config}$$)").format(
+                    config=sql.SQL(config)
                 )
-            )
+            cursor.execute(query)
+
+    def _index_name(self, name: str, column: IndexColumn):
+        return f"{self.ns}_{name}_{column.name}_{column.index.name}"
 
     def select(
         self,
@@ -167,7 +157,7 @@ class VectorChordClient:
         key, value = kv
         if isinstance(value, Keyword):
             return sql.SQL("tokenize({}, {})").format(
-                sql.Placeholder(key), sql.Literal(value._tokenizer)
+                sql.Placeholder(key), sql.Literal(value._model)
             )
         return sql.Placeholder(key)
 
@@ -205,7 +195,7 @@ class VectorChordClient:
     def query_vec(
         self,
         name: str,
-        vec_col: str,
+        vec_col: IndexColumn,
         vec: np.ndarray,
         return_fields: list[str],
         topk: int = 10,
@@ -213,11 +203,12 @@ class VectorChordClient:
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
         cursor = self.conn.execute(
             sql.SQL(
-                "SELECT {columns} FROM {table} ORDER BY {vec_col} <-> %s LIMIT %s;"
+                "SELECT {columns} FROM {table} ORDER BY {vec_col} {op} %s LIMIT %s;"
             ).format(
                 table=sql.Identifier(f"{self.ns}_{name}"),
                 columns=columns,
-                vec_col=sql.Identifier(vec_col),
+                op=sql.SQL(vec_col.index.op_symbol),
+                vec_col=sql.Identifier(vec_col.name),
             ),
             (vec, topk),
         )
@@ -226,16 +217,19 @@ class VectorChordClient:
     def query_multivec(  # noqa: PLR0913
         self,
         name: str,
-        multivec_col: str,
+        multivec_col: IndexColumn,
         vec: np.ndarray,
         max_maxsim_tuples: int,
+        probe: Optional[int],
         return_fields: list[str],
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
         with self.transaction():
             cursor = self.get_cursor()
-            cursor.execute("SET vchordrq.probes = '';")
+            cursor.execute(
+                sql.SQL("SET vchordrq.probes = {};").format(sql.Literal(probe or ""))
+            )
             cursor.execute(
                 sql.SQL("SET vchordrq.max_maxsim_tuples = {};").format(
                     sql.Literal(max_maxsim_tuples)
@@ -247,7 +241,7 @@ class VectorChordClient:
                 ).format(
                     table=sql.Identifier(f"{self.ns}_{name}"),
                     columns=columns,
-                    multivec_col=sql.Identifier(multivec_col),
+                    multivec_col=sql.Identifier(multivec_col.name),
                 ),
                 (vec, topk),
             )
@@ -256,7 +250,7 @@ class VectorChordClient:
     def query_keyword(  # noqa: PLR0913
         self,
         name: str,
-        keyword_col: str,
+        keyword_col: IndexColumn,
         keyword: str,
         return_fields: Sequence[str],
         tokenizer: str,
@@ -266,13 +260,13 @@ class VectorChordClient:
         cursor = self.conn.execute(
             sql.SQL(
                 "SELECT {columns} FROM {table} ORDER BY {keyword_col} <&> "
-                "to_bm25query({index}, %s, {tokenizer}) LIMIT %s;"
+                "to_bm25query({index}, tokenize(%s, {tokenizer})) LIMIT %s;"
             ).format(
                 table=sql.Identifier(f"{self.ns}_{name}"),
                 columns=columns,
-                index=sql.Literal(self._keyword_index_name(name, keyword_col)),
+                index=sql.Literal(self._index_name(name, keyword_col)),
                 tokenizer=sql.Literal(tokenizer),
-                keyword_col=sql.Identifier(keyword_col),
+                keyword_col=sql.Identifier(keyword_col.name),
             ),
             (keyword, topk),
         )

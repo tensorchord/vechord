@@ -46,7 +46,6 @@ html_baseurl = "https://tensorchord.github.io/vechord/"
 html_extra_path = ["robots.txt"]
 # myst
 myst_enable_extensions = ["tasklist"]
-myst_enable_checkboxes = True
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
