@@ -131,7 +131,7 @@ print(vr.search_by_vector(Chunk, emb.vectorize_query("startup")))
 ```python
 from vechord.spec import VectorIndex
 
-class Chunk(Table, kw_only=True)
+class Chunk(Table, kw_only=True):
     uid: Optional[PrimaryKeyAutoIncrease] = None
     vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=128)]
     text: str
