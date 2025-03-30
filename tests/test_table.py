@@ -1,6 +1,6 @@
 from datetime import datetime
 from os import environ
-from typing import Annotated
+from typing import Annotated, Optional
 
 import msgspec
 import numpy as np
@@ -8,7 +8,14 @@ import pytest
 
 from vechord.log import logger
 from vechord.registry import VechordRegistry
-from vechord.spec import ForeignKey, Keyword, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import (
+    ForeignKey,
+    Keyword,
+    PrimaryKeyAutoIncrease,
+    Table,
+    Vector,
+    VectorIndex,
+)
 
 URL = "127.0.0.1"
 # for local container development environment, use the host machine's IP
@@ -36,6 +43,12 @@ class Chunk(Table, kw_only=True):
     text: str
     vector: DenseVector
     keyword: Keyword
+
+
+class AnnotatedChunk(Table, kw_only=True):
+    uid: Optional[PrimaryKeyAutoIncrease] = None
+    text: str
+    vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=2)]
 
 
 class Sentence(Table, kw_only=True):
@@ -78,6 +91,21 @@ def test_insert_select_remove(registry):
     # remove by id
     registry.remove_by(Document.partial_init(uid=2))
     assert len(registry.select_by(Document.partial_init())) == 1
+
+
+@pytest.mark.db
+def test_annotated_index(registry):
+    registry.register([AnnotatedChunk])
+    num = 100
+    topk = 5
+    for text in (f"hello {i}" for i in range(num)):
+        registry.insert(AnnotatedChunk(text=text, vector=gen_vector()))
+
+    inserted = registry.select_by(AnnotatedChunk.partial_init(), fields=["text"])
+    assert len(inserted) == num
+
+    res = registry.search_by_vector(AnnotatedChunk, gen_vector(), topk=topk)
+    assert len(res) == topk
 
 
 @pytest.mark.db

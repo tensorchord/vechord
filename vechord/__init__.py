@@ -13,7 +13,17 @@ from vechord.model import Document
 from vechord.registry import VechordRegistry
 from vechord.rerank import CohereReranker
 from vechord.service import create_web_app
-from vechord.spec import ForeignKey, PrimaryKeyAutoIncrease, Table, Vector
+from vechord.spec import (
+    ForeignKey,
+    IndexColumn,
+    Keyword,
+    KeywordIndex,
+    MultiVectorIndex,
+    PrimaryKeyAutoIncrease,
+    Table,
+    Vector,
+    VectorIndex,
+)
 
 __all__ = [
     "CohereReranker",
@@ -24,8 +34,12 @@ __all__ = [
     "GeminiDenseEmbedding",
     "GeminiEvaluator",
     "GeminiExtractor",
+    "IndexColumn",
+    "Keyword",
+    "KeywordIndex",
     "LocalLoader",
     "Memory",
+    "MultiVectorIndex",
     "OpenAIDenseEmbedding",
     "PrimaryKeyAutoIncrease",
     "RegexChunker",
@@ -36,6 +50,7 @@ __all__ = [
     "VechordRegistry",
     "Vector",
     "VectorChordClient",
+    "VectorIndex",
     "WordLlamaChunker",
     "create_web_app",
 ]

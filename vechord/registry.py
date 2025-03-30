@@ -44,13 +44,14 @@ class VechordRegistry:
         self.tables: list[type[Table]] = []
         self.pipeline: list[Callable] = []
 
-    def register(self, tables: list[type[Table]]):
+    def register(self, tables: list[type[Table]], create_index: bool = True):
         """Register the given tables to the registry.
 
         This will create the tables in the database if not exists.
 
         Args:
             tables: a list of Table classes to be registered.
+            create_index: whether or not to create the index if not exists.
         """
         for table in tables:
             if not issubclass(table, Table):
@@ -58,28 +59,28 @@ class VechordRegistry:
 
             self.client.create_table_if_not_exists(table.name(), table.table_schema())
             logger.debug("create table %s if not exists", table.name())
-            if vector_column := table.vector_column():
-                self.client.create_vector_index(table.name(), vector_column)
-                logger.debug(
-                    "create vector index for %s.%s if not exists",
-                    table.name(),
-                    vector_column,
-                )
-            if multivec_column := table.multivec_column():
-                self.client.create_multivec_index(table.name(), multivec_column)
-                logger.debug(
-                    "create multivec index for %s.%s if not exists",
-                    table.name(),
-                    multivec_column,
-                )
-            if keyword_column := table.keyword_column():
-                self.client.create_keyword_index(table.name(), keyword_column)
-                logger.debug(
-                    "create keyword index for %s.%s if not exists",
-                    table.name(),
-                    keyword_column,
-                )
             self.tables.append(table)
+
+            if table.keyword_column() is not None:
+                self.client.create_tokenizer()
+
+            if not create_index:
+                continue
+
+            # create index
+            for index_column in (
+                table.vector_column(),
+                table.multivec_column(),
+                table.keyword_column(),
+            ):
+                if index_column is None:
+                    continue
+                self.client.create_index_if_not_exists(table.name(), index_column)
+                logger.debug(
+                    "create index for %s.%s if not exists",
+                    table.name(),
+                    index_column.name,
+                )
 
     def set_pipeline(self, pipeline: list[Callable]):
         """Set the pipeline to be executed in the `run` method."""
@@ -172,13 +173,14 @@ class VechordRegistry:
             for r in res
         ]
 
-    def search_by_multivec(
+    def search_by_multivec(  # noqa: PLR0913
         self,
         cls: type[Table],
         multivec: np.ndarray,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
         max_maxsim_tuples: int = 1000,
+        probe: Optional[int] = None,
     ) -> list[Table]:
         """Search the multivec for the given `Table` class.
 
@@ -188,6 +190,7 @@ class VechordRegistry:
             topk: the number of results to be returned.
             max_maxsim_tuples: the maximum number of tuples to be considered for
                 the each vector in the multivec.
+            probe: TODO
             return_fields: the fields to be returned, if not set, all the
                 non-[vector,keyword] fields will be returned.
         """
@@ -202,6 +205,7 @@ class VechordRegistry:
             multivec_col,
             multivec,
             max_maxsim_tuples=max_maxsim_tuples,
+            probe=probe,
             topk=topk,
             return_fields=fields,
         )

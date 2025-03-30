@@ -11,7 +11,7 @@
 
 ```{eval-rst}
 .. automodule:: vechord.spec
-   :members: Vector,ForeignKey,PrimaryKeyAutoIncrease,Table,Keyword
+   :members: Vector,ForeignKey,PrimaryKeyAutoIncrease,Table,Keyword,VectorIndex,MultiVectorIndex,KeywordIndex,IndexColumn
 ```
 
 ## Augment
