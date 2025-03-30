@@ -38,7 +38,6 @@ __all__ = [
     "Keyword",
     "KeywordIndex",
     "LocalLoader",
-    "Memory",
     "MultiVectorIndex",
     "OpenAIDenseEmbedding",
     "PrimaryKeyAutoIncrease",
