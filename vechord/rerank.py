@@ -6,7 +6,7 @@ from vechord.spec import Table
 
 class BaseReranker(ABC):
     @abstractmethod
-    def rerank(self, query: str, chunks: list[str]) -> list[str]:
+    def rerank(self, query: str, chunks: list[str]) -> list[int]:
         """Return the indices of the reranked chunks."""
         raise NotImplementedError
 
@@ -43,8 +43,8 @@ class ReciprocalRankFusion:
         chunk_map: dict[str, Table] = {}
         for chunks in retrieved_chunks:
             for i, chunk in enumerate(chunks):
-                chunk_score[chunk.uid] += self.get_score(i)
-                chunk_map[chunk.uid] = chunk
+                chunk_score[getattr(chunk, chunk.primary_key())] += self.get_score(i)
+                chunk_map[getattr(chunk, chunk.primary_key())] = chunk
 
         sorted_uid = sorted(chunk_score, key=lambda x: chunk_score[x], reverse=True)
         return [chunk_map[uid] for uid in sorted_uid]

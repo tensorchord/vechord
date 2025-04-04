@@ -1,6 +1,6 @@
 from vechord.augment import GeminiAugmenter
 from vechord.chunk import GeminiChunker, RegexChunker, SpacyChunker, WordLlamaChunker
-from vechord.client import VectorChordClient
+from vechord.client import VechordClient
 from vechord.embedding import (
     GeminiDenseEmbedding,
     OpenAIDenseEmbedding,
@@ -10,7 +10,7 @@ from vechord.evaluate import GeminiEvaluator
 from vechord.extract import GeminiExtractor, SimpleExtractor
 from vechord.load import LocalLoader
 from vechord.model import Document
-from vechord.registry import VechordRegistry
+from vechord.registry import VechordPipeline, VechordRegistry
 from vechord.rerank import CohereReranker
 from vechord.service import create_web_app
 from vechord.spec import (
@@ -46,9 +46,10 @@ __all__ = [
     "SpacyChunker",
     "SpacyDenseEmbedding",
     "Table",
+    "VechordClient",
+    "VechordPipeline",
     "VechordRegistry",
     "Vector",
-    "VectorChordClient",
     "VectorIndex",
     "WordLlamaChunker",
     "create_web_app",

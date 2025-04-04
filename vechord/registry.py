@@ -1,10 +1,12 @@
 from functools import wraps
 from typing import (
+    Any,
     Callable,
     Generator,
     Iterator,
     Optional,
     Sequence,
+    TypeVar,
     get_origin,
     get_type_hints,
 )
@@ -12,12 +14,14 @@ from typing import (
 import numpy as np
 
 from vechord.client import (
-    VectorChordClient,
+    VechordClient,
     limit_to_transaction_buffer,
     select_transaction_buffer,
 )
 from vechord.log import logger
 from vechord.spec import Table
+
+T = TypeVar("T", bound=Table)
 
 
 def is_list_of_type(typ) -> bool:
@@ -27,6 +31,40 @@ def is_list_of_type(typ) -> bool:
     if origin is list:
         return True
     return issubclass(origin, Iterator) or issubclass(origin, Generator)
+
+
+class VechordPipeline:
+    """Set up the pipeline to run multiple functions in a transaction.
+
+    Args:
+        client: :class:`VectorChordClient` to be used for the transaction.
+        steps: a list of functions to be run in the pipeline. The first function
+            will be used to accept the input, and the last function will be used
+            to return the output. The rest of the functions will be used to
+            process the data in between. The functions will be run in the order
+            they are defined in the list.
+    """
+
+    def __init__(self, client: VechordClient, steps: list[Callable]):
+        self.client = client
+        self.steps = steps
+
+    def run(self, *args, **kwargs) -> Any:
+        """Execute the pipeline in a transactional manner.
+
+        All the `args` and `kwargs` will be passed to the first function in the
+        pipeline. The pipeline will run in *one* transaction, and all the `inject`
+        can only see the data inserted in this transaction (to guarantee only the
+        new inserted data will be processed in this pipeline).
+
+        This will also return the final result of the last function in the pipeline.
+        """
+        with self.client.transaction(), limit_to_transaction_buffer():
+            # only the 1st one can accept input (could be empty)
+            self.steps[0](*args, **kwargs)
+            for func in self.steps[1:-1]:
+                func()
+            return self.steps[-1]()
 
 
 class VechordRegistry:
@@ -40,7 +78,7 @@ class VechordRegistry:
 
     def __init__(self, namespace: str, url: str):
         self.ns = namespace
-        self.client = VectorChordClient(namespace, url)
+        self.client = VechordClient(namespace, url)
         self.tables: list[type[Table]] = []
         self.pipeline: list[Callable] = []
 
@@ -82,35 +120,16 @@ class VechordRegistry:
                     index_column.name,
                 )
 
-    def set_pipeline(self, pipeline: list[Callable]):
-        """Set the pipeline to be executed in the `run` method."""
-        self.pipeline = pipeline
-
-    def run(self, *args, **kwargs):
-        """Execute the pipeline in a transactional manner.
-
-        All the `args` and `kwargs` will be passed to the first function in the
-        pipeline. The pipeline will run in *one* transaction, and all the `inject`
-        can only see the data inserted in this transaction (to guarantee only the
-        new inserted data will be processed in this pipeline).
-
-        This will also return the final result of the last function in the pipeline.
-        """
-        if not self.pipeline:
-            raise RuntimeError("pipeline is not set")
-        with self.client.transaction(), limit_to_transaction_buffer():
-            # only the 1st one can accept input (could be empty)
-            self.pipeline[0](*args, **kwargs)
-            for func in self.pipeline[1:-1]:
-                func()
-            return self.pipeline[-1]()
+    def create_pipeline(self, steps: list[Callable]) -> VechordPipeline:
+        """Create the :class:`VechordPipeline` to run multiple functions in a transaction."""
+        return VechordPipeline(client=self.client, steps=steps)
 
     def select_by(
         self,
-        obj: Table,
+        obj: T,
         fields: Optional[Sequence[str]] = None,
         limit: Optional[int] = None,
-    ) -> list[Table]:
+    ) -> list[T]:
         """Retrieve the requested fields for the given object stored in the DB.
 
         Args:
@@ -141,11 +160,11 @@ class VechordRegistry:
 
     def search_by_vector(
         self,
-        cls: type[Table],
+        cls: type[T],
         vec: np.ndarray,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
-    ) -> list[Table]:
+    ) -> list[T]:
         """Search the vector for the given `Table` class.
 
         Args:
@@ -175,13 +194,13 @@ class VechordRegistry:
 
     def search_by_multivec(  # noqa: PLR0913
         self,
-        cls: type[Table],
+        cls: type[T],
         multivec: np.ndarray,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
         max_maxsim_tuples: int = 1000,
         probe: Optional[int] = None,
-    ) -> list[Table]:
+    ) -> list[T]:
         """Search the multivec for the given `Table` class.
 
         Args:
@@ -216,11 +235,11 @@ class VechordRegistry:
 
     def search_by_keyword(
         self,
-        cls: type[Table],
+        cls: type[T],
         keyword: str,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
-    ) -> list[Table]:
+    ) -> list[T]:
         """Search the keyword for the given `Table` class.
 
         Args:

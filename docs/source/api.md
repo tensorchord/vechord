@@ -1,17 +1,24 @@
-# Interface
+# API Reference
 
 ## VechordRegistry
 
 ```{eval-rst}
 .. automodule:: vechord.registry
-   :members: VechordRegistry
+   :members: VechordRegistry, VechordPipeline
+```
+
+## VechordClient
+
+```{eval-rst}
+.. automodule:: vechord.client
+   :members: VechordClient
 ```
 
 ## Types
 
 ```{eval-rst}
 .. automodule:: vechord.spec
-   :members: Vector,ForeignKey,PrimaryKeyAutoIncrease,Table,Keyword,VectorIndex,MultiVectorIndex,KeywordIndex,IndexColumn
+   :members:
 ```
 
 ## Augment

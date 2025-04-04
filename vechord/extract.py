@@ -16,7 +16,7 @@ class BaseHTMLParser(HTMLParser):
 
     def __init__(self, *, convert_charrefs: bool = ...) -> None:
         super().__init__(convert_charrefs=convert_charrefs)
-        self.content = []
+        self.content: list[str] = []
         self.skip = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:

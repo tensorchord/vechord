@@ -124,7 +124,9 @@ class OpenAIDenseEmbedding(BaseEmbedding):
         )
 
 
-class SpladePPSparseEmbedding(BaseEmbedding):
+class SpladePPSparseEmbedding:
+    """Splade++ Sparse Embedding."""
+
     def __init__(self, url: str, dim: int = 30522, timeout_sec: int = 10):
         import httpx
 
