@@ -147,7 +147,7 @@ if __name__ == "__main__":
     scores = evaluate()
     print(sum(scores) / len(scores))
 
-    chunks = query_context_chunk("vector search")
-    print(chunks)
+    context_chunks = query_context_chunk("vector search")
+    print(context_chunks)
 
     vr.clear_storage()

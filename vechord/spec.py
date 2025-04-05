@@ -25,6 +25,21 @@ from uuid import UUID
 import msgspec
 import numpy as np
 from psycopg.types.json import Jsonb
+from uuid_utils.compat import uuid7
+
+__all__ = [
+    "DefaultDocument",
+    "ForeignKey",
+    "Keyword",
+    "KeywordIndex",
+    "MultiVectorIndex",
+    "PrimaryKeyAutoIncrease",
+    "PrimaryKeyUUID",
+    "Table",
+    "Vector",
+    "VectorIndex",
+    "create_chunk_with_dim",
+]
 
 
 @runtime_checkable
@@ -132,15 +147,40 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
 
 
 class PrimaryKeyAutoIncrease(int):
-    """Primary key with auto-increment ID type."""
+    """Primary key with auto-increment ID type. (wrap ``int``)"""
 
     @classmethod
     def schema(cls) -> str:
         return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
 
 
+class PrimaryKeyUUID(UUID):
+    """Primary key with UUID type. (wrap ``UUID``)
+
+    This doesn't come with auto-generate, because PostgreSQL doesn't support UUID v7, while v4
+    is purely random and not sortable.
+
+    Choose this one over :class:`PrimaryKeyAutoIncrease` when you need universal uniqueness.
+
+    We suggest to use:
+
+    .. code-block:: python
+
+        class MyTable(Table):
+            uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+    """
+
+    @classmethod
+    def schema(cls) -> str:
+        return "UUID PRIMARY KEY"
+
+    @classmethod
+    def factory(cls):
+        return uuid7()
+
+
 class Keyword(str):
-    """Keyword type for text search.
+    """Keyword type for text search. (wrap ``str``)
 
     User can assign the `str` type, it will be tokenized and converted to
     `bm25vector` in PostgreSQL.
@@ -406,14 +446,19 @@ class Table(Storage):
             typ_cls = (
                 get_first_type_from_optional(typ) if is_optional_type(typ) else typ
             )
-            if issubclass(typ_cls, PrimaryKeyAutoIncrease):
+            if inspect.isclass(typ_cls) and issubclass(
+                typ_cls, (PrimaryKeyUUID, PrimaryKeyAutoIncrease)
+            ):
                 return name
         return None
 
     def todict(self) -> dict[str, Any]:
         """Convert the table instance to a dictionary.
 
-        This will ignore the default values.
+        This will ignore the values like:
+
+        - `msgspec.UNSET`
+        - default value is None and the value is also None (mainly for PrimaryKeyAutoIncrease)
         """
         defaults = getattr(self, "__struct_defaults__", None)
         fields = self.fields()
@@ -427,6 +472,52 @@ class Table(Storage):
         res = {}
         for k, d in zip(fields, defaults, strict=False):
             v = getattr(self, k)
-            if (d is msgspec.NODEFAULT or v != d) and v is not msgspec.UNSET:
+            if v is not msgspec.UNSET and (d is msgspec.NODEFAULT or v is not d):
                 res[k] = v
         return res
+
+
+class DefaultDocument(Table, kw_only=True):
+    """Default Document table class."""
+
+    uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+    title: str = ""
+    text: str
+    created_at: datetime = msgspec.field(default_factory=datetime.now)
+
+
+class _DefaultChunk(Table, kw_only=True):
+    """A placeholder for the chunk table class.
+
+    This is not intended to be used directly, but rather as a base class for
+    creating chunk table classes with specific vector dimensions.
+    """
+
+    uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+    doc_id: Annotated[UUID, ForeignKey[DefaultDocument.uid]]
+    text: str
+    vec: Vector[1]
+    keyword: Keyword
+
+
+def create_chunk_with_dim(dim: int) -> Type[_DefaultChunk]:
+    """Create a chunk table class with a specific vector dimension.
+
+    This comes with vector and keyword column. It also has a foreign key to the
+    :class:`DefaultDocument` table. (If this is used, the :class:`DefaultDocument`
+    table must be registered too.)
+
+    Args:
+        dim: vector dimension.
+    """
+    if not isinstance(dim, int) or dim <= 0:
+        raise ValueError(f"dim must be a positive integer, not `{type(dim)}({dim})`")
+
+    DenseVector = Vector[dim]
+
+    class DefaultChunk(_DefaultChunk):
+        """A chunk table class with a specific vector dimension."""
+
+        vec: DenseVector  # type: ignore
+
+    return DefaultChunk

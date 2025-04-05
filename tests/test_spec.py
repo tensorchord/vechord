@@ -1,19 +1,23 @@
 from datetime import datetime
 from typing import Annotated
+from uuid import UUID
 
 import msgspec
 import numpy as np
 import pytest
 
 from vechord.spec import (
+    DefaultDocument,
     ForeignKey,
     Keyword,
     MultiVectorIndex,
     PrimaryKeyAutoIncrease,
+    PrimaryKeyUUID,
     Table,
     Vector,
     VectorDistance,
     VectorIndex,
+    create_chunk_with_dim,
 )
 
 
@@ -25,7 +29,7 @@ class Document(Table, kw_only=True):
 
 
 class Chunk(Table, kw_only=True):
-    uid: PrimaryKeyAutoIncrease | None = None
+    uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
     doc_id: Annotated[int, ForeignKey[Document.uid]]
     text: str
     vec: Vector[128]
@@ -38,7 +42,9 @@ class Simple(Table):
     text: str
 
 
-@pytest.mark.parametrize("table", [Document, Chunk, Simple])
+@pytest.mark.parametrize(
+    "table", [Document, Chunk, Simple, DefaultDocument, create_chunk_with_dim(128)]
+)
 def test_storage_cls_methods(table: type[Table]):
     assert table.name() == table.__name__.lower()
     assert "uid" in table.fields()
@@ -49,6 +55,44 @@ def test_storage_cls_methods(table: type[Table]):
 
     # UNSET won't appear in the `todict` result
     assert t.todict() == {}
+
+
+def test_table_todict():
+    doc = Document(title="hello world", text="hello there")
+    values = doc.todict()
+    assert values["title"] == "hello world"
+    assert values["text"] == "hello there"
+    assert values["updated_at"] is not None, values
+    assert "uid" not in values, values
+
+    chunk = Chunk(
+        doc_id=1,
+        text="hello",
+        vec=Vector[128]([0.1] * 128),
+        multivec=[],
+        keyword=Keyword("hello"),
+    )
+    values = chunk.todict()
+    assert values["doc_id"] == 1
+    assert values["text"] == "hello"
+    assert np.isclose(values["vec"], np.array([0.1] * 128)).all()
+    assert values["multivec"] == []
+    assert values["keyword"] == "hello"
+    assert values["uid"], values
+
+
+def test_default_chunk():
+    dim = 1024
+    chunk_cls = create_chunk_with_dim(dim)
+    DenseVector = Vector[dim]
+    text = "hello world"
+    chunk = chunk_cls(
+        doc_id=0, text=text, vec=DenseVector(np.ones(dim)), keyword=Keyword(text)
+    )
+
+    assert isinstance(chunk.uid, UUID)
+    values = chunk.todict()
+    assert values["doc_id"] == 0
 
 
 def test_table_cls_methods():

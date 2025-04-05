@@ -27,7 +27,15 @@ def limit_to_transaction_buffer():
         select_transaction_buffer.reset(token)
 
 
-class VectorChordClient:
+class VechordClient:
+    """A PostgreSQL client to access the database.
+
+    Args:
+        namespace: used as a prefix for the table name.
+        url: the database connection URL.
+            e.g. "postgresql://user:password@localhost:5432/dbname"
+    """
+
     def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.url = url
@@ -44,6 +52,7 @@ class VectorChordClient:
 
     @contextlib.contextmanager
     def transaction(self):
+        """Create a transaction context manager."""
         with self.conn.transaction():
             cursor = self.conn.cursor()
             token = active_cursor.set(cursor)
@@ -53,6 +62,7 @@ class VectorChordClient:
                 active_cursor.reset(token)
 
     def get_cursor(self):
+        """Get the current cursor or create a new one."""
         cursor = active_cursor.get()
         if cursor is not None:
             # in a transaction
@@ -197,7 +207,7 @@ class VectorChordClient:
         name: str,
         vec_col: IndexColumn,
         vec: np.ndarray,
-        return_fields: list[str],
+        return_fields: Sequence[str],
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
@@ -221,17 +231,19 @@ class VectorChordClient:
         vec: np.ndarray,
         max_maxsim_tuples: int,
         probe: Optional[int],
-        return_fields: list[str],
+        return_fields: Sequence[str],
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
         with self.transaction():
             cursor = self.get_cursor()
             cursor.execute(
-                sql.SQL("SET vchordrq.probes = {};").format(sql.Literal(probe or ""))
+                sql.SQL("SET LOCAL vchordrq.probes = {};").format(
+                    sql.Literal(probe or "")
+                )
             )
             cursor.execute(
-                sql.SQL("SET vchordrq.max_maxsim_tuples = {};").format(
+                sql.SQL("SET LOCAL vchordrq.max_maxsim_tuples = {};").format(
                     sql.Literal(max_maxsim_tuples)
                 )
             )
