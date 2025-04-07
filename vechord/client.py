@@ -6,6 +6,7 @@ import numpy as np
 import psycopg
 from pgvector.psycopg import register_vector
 from psycopg import sql
+from psycopg.pq import TransactionStatus
 
 from vechord.spec import IndexColumn, Keyword
 
@@ -52,7 +53,11 @@ class VechordClient:
 
     @contextlib.contextmanager
     def transaction(self):
-        """Create a transaction context manager."""
+        """Create a transaction context manager (when there is no transaction)."""
+        if self.conn.info.transaction_status != TransactionStatus.IDLE:
+            yield None
+            return
+
         with self.conn.transaction():
             cursor = self.conn.cursor()
             token = active_cursor.set(cursor)
@@ -164,6 +169,7 @@ class VechordClient:
 
     @staticmethod
     def _to_placeholder(kv: tuple[str, Any]):
+        """Process the `Keyword` type"""
         key, value = kv
         if isinstance(value, Keyword):
             return sql.SQL("tokenize({}, {})").format(
@@ -182,6 +188,21 @@ class VechordClient:
             ),
             values,
         )
+
+    def copy_bulk(self, name: str, values: Sequence[dict]):
+        columns = sql.SQL(", ").join(map(sql.Identifier, values[0]))
+        with self.transaction():
+            cursor = self.get_cursor()
+            with cursor.copy(
+                sql.SQL(
+                    "COPY {table} ({columns}) FROM STDIN WITH (FORMAT BINARY)"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    columns=columns,
+                )
+            ) as copy:
+                for value in values:
+                    copy.write_row(tuple(value.values()))
 
     def delete(self, name: str, kvs: dict):
         if kvs:

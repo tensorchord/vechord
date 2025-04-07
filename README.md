@@ -65,7 +65,7 @@ class Document(Table, kw_only=True):
 
 class Chunk(Table, kw_only=True)
     uid: Optional[PrimaryKeyAutoIncrease] = None
-    doc_id: Annotated[int, ForeignKey[Document.uid]]  # reference to `Document.uid`
+    doc_id: Annotated[int, ForeignKey[Document.uid]]  # reference to `Document.uid` on DELETE CASCADE
     vector: DenseVector  # this comes with a default vector index
     text: str
 ```
