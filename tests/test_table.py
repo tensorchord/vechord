@@ -12,6 +12,7 @@ from vechord.spec import (
     ForeignKey,
     Keyword,
     PrimaryKeyAutoIncrease,
+    PrimaryKeyUUID,
     Table,
     Vector,
     VectorIndex,
@@ -52,7 +53,7 @@ class AnnotatedChunk(Table, kw_only=True):
 
 
 class Sentence(Table, kw_only=True):
-    uid: PrimaryKeyAutoIncrease | None = None
+    uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
     text: str
     vector: list[DenseVector]
 
@@ -64,7 +65,6 @@ def fixture_registry(request):
     yield registry
     logger.debug("clearing storage...")
     registry.clear_storage(drop_table=True)
-    registry.pipeline.clear()
 
 
 @pytest.mark.db
@@ -208,9 +208,9 @@ def test_pipeline(registry):
 
     correct = "1 2 3 4 5"
     error = "100 0.1 no no"
-    registry.set_pipeline([create_doc, create_chunk])
+    pipeline = registry.create_pipeline([create_doc, create_chunk])
 
-    registry.run(correct)
+    pipeline.run(correct)
     docs = registry.select_by(Document.partial_init())
     assert len(docs) == 1
     chunks = registry.select_by(Chunk.partial_init())
@@ -218,7 +218,7 @@ def test_pipeline(registry):
 
     # break the transaction won't add new records
     with pytest.raises(ValueError):
-        registry.run(error)
+        pipeline.run(error)
 
     docs = registry.select_by(Document.partial_init())
     assert len(docs) == 1

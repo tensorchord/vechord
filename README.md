@@ -116,8 +116,8 @@ in the current transaction. So users can focus on the data processing part witho
 which part of data has not been processed yet.
 
 ```python
-vr.set_pipeline([add_document, add_chunk])
-vr.run("https://paulgraham.com/best.html")  # only accept the arguments for the first function
+pipeline = vr.create_pipeline([add_document, add_chunk])
+pipeline.run("https://paulgraham.com/best.html")  # only accept the arguments for the first function
 ```
 
 ### Search
@@ -135,6 +135,12 @@ class Chunk(Table, kw_only=True):
     uid: Optional[PrimaryKeyAutoIncrease] = None
     vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=128)]
     text: str
+```
+
+### Access the underlying database cursor directly
+
+```python
+vr.client.get_cursor().execute("SET vchordrq.probes = 100;")
 ```
 
 ### HTTP Service

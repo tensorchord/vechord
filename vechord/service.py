@@ -6,7 +6,7 @@ from defspec import OpenAPI, RenderTemplate
 from falcon import App, Request, Response
 
 from vechord.log import logger
-from vechord.registry import Table, VechordRegistry
+from vechord.registry import Table, VechordPipeline, VechordRegistry
 
 
 def validate_request(spec: type[msgspec.Struct], req: Request, resp: Response):
@@ -68,8 +68,8 @@ class TableResource:
 
 
 class PipelineResource:
-    def __init__(self, registry: VechordRegistry):
-        self.registry = registry
+    def __init__(self, pipeline: VechordPipeline):
+        self.pipeline = pipeline
         self.decoder = msgspec.json.Decoder()
 
     def on_post(self, req: Request, resp: Response):
@@ -79,7 +79,7 @@ class PipelineResource:
                 title="Invalid request",
                 description="Request must be a JSON Dict",
             )
-        self.registry.run(**json)
+        self.pipeline.run(**json)
 
 
 class OpenAPIResource:
@@ -124,10 +124,11 @@ class OpenAPIRender:
         resp.text = self.template
 
 
-def create_web_app(registry: VechordRegistry) -> App:
+def create_web_app(registry: VechordRegistry, pipeline: VechordPipeline) -> App:
     """Create a `Falcon` WSGI application for the given registry.
 
     This includes the:
+
     - health check [GET](/)
     - tables [GET/POST/DELETE](/api/table/{table_name})
     - pipeline in a transaction [POST](/api/pipeline)
@@ -140,7 +141,7 @@ def create_web_app(registry: VechordRegistry) -> App:
             f"/api/table/{table.name()}",
             TableResource(table=table, registry=registry),
         )
-    app.add_route("/api/pipeline", PipelineResource(registry))
+    app.add_route("/api/pipeline", PipelineResource(pipeline=pipeline))
     app.add_route("/openapi/spec.json", OpenAPIResource(registry.tables))
     app.add_route(
         "/openapi/swagger", OpenAPIRender("/openapi/spec.json", RenderTemplate.SWAGGER)

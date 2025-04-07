@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Annotated
 
 import httpx
@@ -37,6 +38,7 @@ class Query(Table, kw_only=True):
     vector: DenseVector
 
 
+@dataclass(frozen=True)
 class Evaluation:
     map: float
     ndcg: float
