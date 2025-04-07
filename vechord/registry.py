@@ -133,8 +133,9 @@ class VechordRegistry:
         """Retrieve the requested fields for the given object stored in the DB.
 
         Args:
-            obj: the object to be retrieved, this should be a `Table.partial_init()`
-                instance, which means given values will be used for filtering.
+            obj: the object to be retrieved, this should be generated from
+                :meth:`Table.partial_init`, while the given values will be used
+                for filtering (``=`` or ``is``).
             fields: the fields to be retrieved, if not set, all the fields will be
                 retrieved.
             limit: the maximum number of results to be returned, if not set, all
@@ -287,6 +288,27 @@ class VechordRegistry:
             raise ValueError(f"unsupported class {type(obj)}")
         self.client.insert(obj.name(), obj.todict())
 
+    def copy_bulk(self, objs: list[Table]):
+        """Insert the given list of objects to the DB.
+
+        This is more efficient than calling `insert` for each object.
+
+        Args:
+            objs: the list of objects to be inserted, needs to be of the same
+                class and filled with the same fields. The class should be a
+                subclass of `Table`.
+        """
+        if not objs:
+            return
+        cls = objs[0].__class__
+        if not issubclass(cls, Table):
+            raise ValueError(f"unsupported class {cls}")
+        if not all(isinstance(obj, cls) for obj in objs):
+            raise ValueError(f"not all the objects are {cls}")
+
+        name = objs[0].name()
+        self.client.copy_bulk(name, [obj.todict() for obj in objs])
+
     def inject(
         self, input: Optional[type[Table]] = None, output: Optional[type[Table]] = None
     ):
@@ -334,11 +356,21 @@ class VechordRegistry:
                     return [func(*arg, **kwargs) for arg in arguments]
 
                 count = 0
+                use_copy = output.keyword_column() is None
                 if is_list_of_type(returns):
                     for arg in arguments:
-                        for ret in func(*arg, **kwargs):
-                            self.insert(ret)
-                            count += 1
+                        if use_copy:
+                            rets = list(func(*arg, **kwargs))
+                            self.copy_bulk(rets)
+                            count += len(rets)
+                        else:
+                            for ret in func(*arg, **kwargs):
+                                self.insert(ret)
+                                count += 1
+                elif use_copy:
+                    rets = list(func(*args, **kwargs) for args in arguments)
+                    self.copy_bulk(rets)
+                    count += len(rets)
                 else:
                     for arg in arguments:
                         ret = func(*arg, **kwargs)
