@@ -26,9 +26,9 @@ pip install vechord
 - [x] keyword search with BM25 score (powered by [VectorChord-bm25][vectorchord-bm25])
 - [x] reduce boilerplate code by taking full advantage of the Python type hint
 - [x] provide decorator to inject the data from/to the database
-- [x] guarantee the data consistency with transaction
+- [x] guarantee the data consistency with the PostgreSQL transaction
 - [x] auto-generate the web service
-- [x] provide common functions like (can also use any other libraries as you like):
+- [x] provide common tools like (can also use any other libraries):
   - [x] `Augmenter` for contextual retrieval
   - [x] `Chunker` to segment the text into chunks
   - [x] `Embedding` to generate the embedding from the text

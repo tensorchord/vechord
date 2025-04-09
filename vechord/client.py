@@ -1,5 +1,6 @@
 import contextlib
 import contextvars
+import math
 from typing import Any, Optional, Sequence
 
 import numpy as np
@@ -8,7 +9,13 @@ from pgvector.psycopg import register_vector
 from psycopg import sql
 from psycopg.pq import TransactionStatus
 
-from vechord.spec import IndexColumn, Keyword
+from vechord.spec import (
+    IndexColumn,
+    Keyword,
+    KeywordIndex,
+    MultiVectorIndex,
+    VectorIndex,
+)
 
 DEFAULT_TOKENIZER = ("bert_base_uncased", "wiki_tocken")
 
@@ -223,39 +230,22 @@ class VechordClient:
                 )
             )
 
-    def query_vec(
+    def query_vec(  # noqa: PLR0913
         self,
         name: str,
-        vec_col: IndexColumn,
+        vec_col: IndexColumn[VectorIndex],
         vec: np.ndarray,
         return_fields: Sequence[str],
         topk: int = 10,
+        probe: Optional[int] = None,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        cursor = self.conn.execute(
-            sql.SQL(
-                "SELECT {columns} FROM {table} ORDER BY {vec_col} {op} %s LIMIT %s;"
-            ).format(
-                table=sql.Identifier(f"{self.ns}_{name}"),
-                columns=columns,
-                op=sql.SQL(vec_col.index.op_symbol),
-                vec_col=sql.Identifier(vec_col.name),
-            ),
-            (vec, topk),
-        )
-        return [row for row in cursor.fetchall()]
-
-    def query_multivec(  # noqa: PLR0913
-        self,
-        name: str,
-        multivec_col: IndexColumn,
-        vec: np.ndarray,
-        max_maxsim_tuples: int,
-        probe: Optional[int],
-        return_fields: Sequence[str],
-        topk: int = 10,
-    ):
-        columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
+        if (
+            probe is None
+            and vec_col.index.lists is not None
+            and vec_col.index.lists > 1
+        ):
+            probe = math.ceil(vec_col.index.lists / 16)
         with self.transaction():
             cursor = self.get_cursor()
             cursor.execute(
@@ -264,8 +254,45 @@ class VechordClient:
                 )
             )
             cursor.execute(
-                sql.SQL("SET LOCAL vchordrq.max_maxsim_tuples = {};").format(
-                    sql.Literal(max_maxsim_tuples)
+                sql.SQL(
+                    "SELECT {columns} FROM {table} ORDER BY {vec_col} {op} %s LIMIT %s;"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    columns=columns,
+                    op=sql.SQL(vec_col.index.op_symbol),
+                    vec_col=sql.Identifier(vec_col.name),
+                ),
+                (vec, topk),
+            )
+            return [row for row in cursor.fetchall()]
+
+    def query_multivec(  # noqa: PLR0913
+        self,
+        name: str,
+        multivec_col: IndexColumn[MultiVectorIndex],
+        vec: np.ndarray,
+        maxsim_refine: int,
+        probe: Optional[int],
+        return_fields: Sequence[str],
+        topk: int = 10,
+    ):
+        columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
+        if (
+            probe is None
+            and multivec_col.index.lists is not None
+            and multivec_col.index.lists > 1
+        ):
+            probe = math.ceil(multivec_col.index.lists / 16)
+        with self.transaction():
+            cursor = self.get_cursor()
+            cursor.execute(
+                sql.SQL("SET LOCAL vchordrq.probes = {};").format(
+                    sql.Literal(probe or "")
+                )
+            )
+            cursor.execute(
+                sql.SQL("SET LOCAL vchordrq.maxsim_refine = {};").format(
+                    sql.Literal(maxsim_refine)
                 )
             )
             cursor.execute(
@@ -283,7 +310,7 @@ class VechordClient:
     def query_keyword(  # noqa: PLR0913
         self,
         name: str,
-        keyword_col: IndexColumn,
+        keyword_col: IndexColumn[KeywordIndex],
         keyword: str,
         return_fields: Sequence[str],
         tokenizer: str,
