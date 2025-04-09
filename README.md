@@ -47,7 +47,7 @@ pip install vechord
 
 ## User Guide
 
-For the API references, check our [documentation][document-link].
+For more details, check our [API refrence][document-api] and [User Guide][document-guide].
 
 ### Define the table
 
@@ -161,7 +161,7 @@ with make_server("", 8000, app) as server:
 ## Development
 
 ```bash
-docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord_bm25-postgres:pg17-v0.1.1
+docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord-suite:pg17-latest
 envd up
 # inside the envd env, sync all the dependencies
 make sync
@@ -177,6 +177,8 @@ make format
 [ci-check-file]: https://github.com/tensorchord/vechord/actions/workflows/check.yml
 [ci-page-badge]: https://github.com/tensorchord/vechord/actions/workflows/pages.yml/badge.svg
 [document-link]: https://tensorchord.github.io/vechord/
+[document-api]: https://tensorchord.github.io/vechord/api.html
+[document-guide]: https://tensorchord.github.io/vechord/guide.html
 [license-badge]: https://img.shields.io/github/license/tensorchord/vechord
 [license-link]: https://github.com/tensorchord/vechord/blob/main/LICENSE
 [pypi-badge]: https://img.shields.io/pypi/v/vechord

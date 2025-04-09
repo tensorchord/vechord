@@ -23,6 +23,8 @@ hidden:
 caption: User Guide
 ---
 
+guide
+utils
 api
 example
 ```

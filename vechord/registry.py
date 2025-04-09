@@ -121,7 +121,11 @@ class VechordRegistry:
                 )
 
     def create_pipeline(self, steps: list[Callable]) -> VechordPipeline:
-        """Create the :class:`VechordPipeline` to run multiple functions in a transaction."""
+        """Create the :class:`VechordPipeline` to run multiple functions in a transaction.
+
+        Args:
+            steps: a list of functions to be run in the pipeline.
+        """
         return VechordPipeline(client=self.client, steps=steps)
 
     def select_by(
@@ -283,7 +287,11 @@ class VechordRegistry:
         self.client.delete(obj.__class__.name(), kvs)
 
     def insert(self, obj: Table):
-        """Insert the given object to the DB."""
+        """Insert the given object to the DB.
+
+        Args:
+            obj: the object to be inserted
+        """
         if not isinstance(obj, Table):
             raise ValueError(f"unsupported class {type(obj)}")
         self.client.insert(obj.name(), obj.todict())

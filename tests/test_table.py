@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 import msgspec
 import numpy as np
 import pytest
+from psycopg.types.json import Jsonb
 
 from vechord.log import logger
 from vechord.registry import VechordRegistry
@@ -106,6 +107,45 @@ def test_annotated_index(registry):
 
     res = registry.search_by_vector(AnnotatedChunk, gen_vector(), topk=topk)
     assert len(res) == topk
+
+
+@pytest.mark.db
+def test_keyword_tokenizer(registry):
+    Tockenizer = Keyword.with_model("wiki_tocken")
+
+    class OtherTokenizer(Table, kw_only=True):
+        uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+        text: str
+        keyword: Tockenizer
+
+    registry.register([OtherTokenizer])
+    num = 20
+    topk = 5
+    for text in (f"hello {i}" for i in range(num)):
+        registry.insert(OtherTokenizer(text=text, keyword=Tockenizer(text)))
+
+    inserted = registry.select_by(OtherTokenizer.partial_init(), fields=["text"])
+    assert len(inserted) == num
+
+    res = registry.search_by_keyword(OtherTokenizer, "hello", topk=topk)
+    assert len(res) == topk
+    assert all("hello" in record.text for record in res)
+
+
+@pytest.mark.db
+def test_jsonb(registry):
+    class JsonTable(Table, kw_only=True):
+        uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+        text: str
+        data: Jsonb
+
+    registry.register([JsonTable])
+    num = 10
+    for i in range(num):
+        registry.insert(JsonTable(text=f"hello {i}", data=Jsonb({"key": i})))
+
+    inserted = registry.select_by(JsonTable.partial_init(), fields=["text"])
+    assert len(inserted) == num
 
 
 @pytest.mark.db
