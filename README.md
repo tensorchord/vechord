@@ -47,8 +47,7 @@ pip install vechord
 
 ## User Guide
 
-For more details, check our [API refrence][document-api] and [User Guide][document-guide].
-
+For more details, check our [API reference][document-api] and [User Guide][document-guide].
 ### Define the table
 
 ```python
