@@ -16,6 +16,7 @@ release = "latest"
 
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
@@ -45,7 +46,20 @@ ogp_image = (
 html_baseurl = "https://tensorchord.github.io/vechord/"
 html_extra_path = ["robots.txt"]
 # myst
-myst_enable_extensions = ["tasklist", "fieldlist", "colon_fence"]
+myst_enable_extensions = [
+    "tasklist",
+    "fieldlist",
+    "colon_fence",
+    "replacements",
+    "substitution",
+    "smartquotes",
+    "html_admonition",
+    "deflist",
+]
+myst_ref_domains = ["std", "py"]
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

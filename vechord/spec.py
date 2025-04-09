@@ -194,7 +194,6 @@ class Keyword(str):
 
     @classmethod
     def with_model(cls, model: Literal["bert_base_uncased", "wiki_tocken"]) -> Type:
-        """TODO: test this"""
         cls._model = model
         return cls
 

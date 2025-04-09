@@ -14,19 +14,23 @@ from vechord.registry import VechordPipeline, VechordRegistry
 from vechord.rerank import CohereReranker
 from vechord.service import create_web_app
 from vechord.spec import (
+    DefaultDocument,
     ForeignKey,
     IndexColumn,
     Keyword,
     KeywordIndex,
     MultiVectorIndex,
     PrimaryKeyAutoIncrease,
+    PrimaryKeyUUID,
     Table,
     Vector,
     VectorIndex,
+    create_chunk_with_dim,
 )
 
 __all__ = [
     "CohereReranker",
+    "DefaultDocument",
     "Document",
     "ForeignKey",
     "GeminiAugmenter",
@@ -41,6 +45,7 @@ __all__ = [
     "MultiVectorIndex",
     "OpenAIDenseEmbedding",
     "PrimaryKeyAutoIncrease",
+    "PrimaryKeyUUID",
     "RegexChunker",
     "SimpleExtractor",
     "SpacyChunker",
@@ -52,5 +57,6 @@ __all__ = [
     "Vector",
     "VectorIndex",
     "WordLlamaChunker",
+    "create_chunk_with_dim",
     "create_web_app",
 ]
