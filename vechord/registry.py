@@ -169,6 +169,7 @@ class VechordRegistry:
         vec: np.ndarray,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
+        probe: Optional[int] = None,
     ) -> list[T]:
         """Search the vector for the given `Table` class.
 
@@ -178,6 +179,7 @@ class VechordRegistry:
             topk: the number of results to be returned.
             return_fields: the fields to be returned, if not set, all the
                 non-[vector,keyword] fields will be returned.
+            probe: how many K-means clusters to probe for the `vec`.
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
@@ -191,6 +193,7 @@ class VechordRegistry:
             vec,
             topk=topk,
             return_fields=fields,
+            probe=probe,
         )
         return [
             cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
@@ -203,7 +206,7 @@ class VechordRegistry:
         multivec: np.ndarray,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
-        max_maxsim_tuples: int = 1000,
+        maxsim_refine: int = 1000,
         probe: Optional[int] = None,
     ) -> list[T]:
         """Search the multivec for the given `Table` class.
@@ -212,9 +215,10 @@ class VechordRegistry:
             cls: the `Table` class to be searched.
             multivec: the multivec to be searched.
             topk: the number of results to be returned.
-            max_maxsim_tuples: the maximum number of tuples to be considered for
-                the each vector in the multivec.
-            probe: TODO
+            maxsim_refine: the maximum number of document vectors to be compute with
+                full-precision for each vector in the `multivec`. 0 means all the
+                distances are compute with bit quantization.
+            probe: how many K-means clusters to probe for each vector in the `multivec`.
             return_fields: the fields to be returned, if not set, all the
                 non-[vector,keyword] fields will be returned.
         """
@@ -228,7 +232,7 @@ class VechordRegistry:
             cls.name(),
             multivec_col,
             multivec,
-            max_maxsim_tuples=max_maxsim_tuples,
+            maxsim_refine=maxsim_refine,
             probe=probe,
             topk=topk,
             return_fields=fields,

@@ -285,15 +285,18 @@ class BaseIndex(ABC):
         raise NotImplementedError
 
 
-class IndexColumn(msgspec.Struct, frozen=True, order=True):
+Idx = TypeVar("Idx", bound=BaseIndex)
+
+
+class IndexColumn(msgspec.Struct, Generic[Idx], frozen=True, order=True):
     name: str
-    index: BaseIndex
+    index: Idx
 
 
 @dataclasses.dataclass
 class VectorIndex(BaseIndex):
     distance: VectorDistance = VectorDistance.L2
-    lists: int = 1
+    lists: Optional[int] = None
 
     def __post_init__(self):
         self.verify()
@@ -315,7 +318,7 @@ class VectorIndex(BaseIndex):
         return f"""
 residual_quantization = {"true" if is_l2 else "false"}
 [build.internal]
-lists = [{self.lists}]
+lists = [{self.lists or ""}]
 spherical_centroids = {"false" if is_l2 else "true"}
 """
 
@@ -376,7 +379,7 @@ class Table(Storage):
         return tuple((name, type_to_psql(typ)) for name, typ in hints.items())
 
     @classmethod
-    def vector_column(cls) -> Optional[IndexColumn]:
+    def vector_column(cls) -> Optional[IndexColumn[VectorIndex]]:
         """Get the vector column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if issubclass(typ.__class__, VectorMeta):
@@ -390,7 +393,7 @@ class Table(Storage):
         return None
 
     @classmethod
-    def multivec_column(cls) -> Optional[IndexColumn]:
+    def multivec_column(cls) -> Optional[IndexColumn[MultiVectorIndex]]:
         """Get the multivec column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if is_list_of_vector_type(typ):
@@ -404,7 +407,7 @@ class Table(Storage):
         return None
 
     @classmethod
-    def keyword_column(cls) -> Optional[IndexColumn]:
+    def keyword_column(cls) -> Optional[IndexColumn[KeywordIndex]]:
         """Get the keyword column name."""
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if typ is Keyword:

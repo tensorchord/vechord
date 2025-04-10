@@ -50,7 +50,7 @@ class Chunk(Table, kw_only=True):
 class AnnotatedChunk(Table, kw_only=True):
     uid: Optional[PrimaryKeyAutoIncrease] = None
     text: str
-    vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=2)]
+    vector: Annotated[DenseVector, VectorIndex(distance="cos", lists=3)]
 
 
 class Sentence(Table, kw_only=True):
