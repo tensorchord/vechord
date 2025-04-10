@@ -179,7 +179,7 @@ class VechordRegistry:
             topk: the number of results to be returned.
             return_fields: the fields to be returned, if not set, all the
                 non-[vector,keyword] fields will be returned.
-            probe: how many K-menas clusters to probe for the `vec`.
+            probe: how many K-means clusters to probe for the `vec`.
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
@@ -218,7 +218,7 @@ class VechordRegistry:
             maxsim_refine: the maximum number of document vectors to be compute with
                 full-precision for each vector in the `multivec`. 0 means all the
                 distances are compute with bit quantization.
-            probe: how many K-menas clusters to probe for each vector in the `multivec`.
+            probe: how many K-means clusters to probe for each vector in the `multivec`.
             return_fields: the fields to be returned, if not set, all the
                 non-[vector,keyword] fields will be returned.
         """
