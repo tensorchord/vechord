@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import partial
 from typing import Annotated
 from uuid import UUID
 
@@ -25,7 +26,9 @@ class Document(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     title: str
     text: str
-    updated_at: datetime = msgspec.field(default_factory=datetime.now)
+    updated_at: datetime = msgspec.field(
+        default_factory=partial(datetime.now, timezone.utc)
+    )
 
 
 class Chunk(Table, kw_only=True):
@@ -117,6 +120,11 @@ def test_table_cls_methods():
         "REFERENCES {namespace}_document(uid) ON DELETE CASCADE"
         in find_schema_by_name(Chunk.table_schema(), "doc_id")
     )
+
+    assert find_schema_by_name(Chunk.table_psql_types(), "vec") == "vector"
+    assert find_schema_by_name(Chunk.table_psql_types(), "multivec") == "vector[]"
+    assert find_schema_by_name(Chunk.table_psql_types(), "keyword") == "bm25vector"
+    assert find_schema_by_name(Chunk.table_psql_types(), "uid") == "uuid"
 
 
 def test_vector_type():

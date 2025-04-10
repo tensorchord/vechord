@@ -2,7 +2,8 @@ import dataclasses
 import enum
 import inspect
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import partial
 from types import UnionType
 from typing import (
     Annotated,
@@ -46,6 +47,10 @@ __all__ = [
 class VechordType(Protocol):
     @classmethod
     def schema(cls) -> str:
+        pass
+
+    @classmethod
+    def psql_type(cls) -> str:
         pass
 
 
@@ -98,6 +103,10 @@ def create_vector_type(dim: int) -> Type[Vector]:
         def schema(cls):
             return f"VECTOR({cls._dim})"
 
+        @classmethod
+        def psql_type(cls):
+            return "vector"
+
     SpecificVector.__name__ = name
     return SpecificVector
 
@@ -142,6 +151,10 @@ def create_foreign_key_type(ref) -> Type[ForeignKey]:
             ref_val = cls._ref.__name__
             return f"REFERENCES {{namespace}}_{ref_cls}({ref_val}) ON DELETE CASCADE"
 
+        @classmethod
+        def psql_type(cls):
+            return ""
+
     SpecificForeignKey.__name__ = name
     return SpecificForeignKey
 
@@ -152,6 +165,10 @@ class PrimaryKeyAutoIncrease(int):
     @classmethod
     def schema(cls) -> str:
         return "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY"
+
+    @classmethod
+    def psql_type(cls) -> str:
+        return "bigint"
 
 
 class PrimaryKeyUUID(UUID):
@@ -175,6 +192,10 @@ class PrimaryKeyUUID(UUID):
         return "UUID PRIMARY KEY"
 
     @classmethod
+    def psql_type(cls) -> str:
+        return "uuid"
+
+    @classmethod
     def factory(cls):
         return uuid7()
 
@@ -193,6 +214,10 @@ class Keyword(str):
         return "bm25vector"
 
     @classmethod
+    def psql_type(cls) -> str:
+        return "bm25vector"
+
+    @classmethod
     def with_model(cls, model: Literal["bert_base_uncased", "wiki_tocken"]) -> Type:
         cls._model = model
         return cls
@@ -202,7 +227,7 @@ TYPE_TO_PSQL = {
     int: "BIGINT",
     str: "TEXT",
     bytes: "BYTEA",
-    float: "FLOAT 8",
+    float: "FLOAT8",
     bool: "BOOLEAN",
     UUID: "UUID",
     datetime: "TIMESTAMPTZ",
@@ -227,24 +252,39 @@ def is_list_of_vector_type(typ: Type) -> bool:
     return get_origin(typ) is list and issubclass(typ.__args__[0].__class__, VectorMeta)
 
 
-def type_to_psql(typ) -> str:
+def py_type_to_psql_schema(typ) -> str:
     if is_optional_type(typ):
         typ = get_first_type_from_optional(typ)
 
     if get_origin(typ) is Annotated:
         meta = typ.__metadata__
         origin = typ.__origin__
-        schema = [type_to_psql(origin)]
+        schema = [py_type_to_psql_schema(origin)]
         for m in meta:
             if inspect.isclass(m) and issubclass(m, ForeignKey):
                 schema.append(m.schema())
         return " ".join(schema)
     elif get_origin(typ) is list:
-        return f"{type_to_psql(typ.__args__[0])}[]"
+        return f"{py_type_to_psql_schema(typ.__args__[0])}[]"
     if isinstance(typ, VechordType):
         return typ.schema()
     if typ in TYPE_TO_PSQL:
         return TYPE_TO_PSQL[typ]
+    raise ValueError(f"unsupported type {typ}")
+
+
+def py_type_to_psql_type(typ) -> str:
+    if is_optional_type(typ):
+        typ = get_first_type_from_optional(typ)
+
+    if get_origin(typ) is Annotated:
+        return py_type_to_psql_type(typ.__origin__)
+    elif get_origin(typ) is list:
+        return f"{py_type_to_psql_type(typ.__args__[0])}[]"
+    if isinstance(typ, VechordType):
+        return typ.psql_type()
+    if typ in TYPE_TO_PSQL:
+        return TYPE_TO_PSQL[typ].lower()
     raise ValueError(f"unsupported type {typ}")
 
 
@@ -376,7 +416,13 @@ class Table(Storage):
     def table_schema(cls) -> Sequence[tuple[str, str]]:
         """Generate the table schema from the class attributes' type hints."""
         hints = get_type_hints(cls, include_extras=True)
-        return tuple((name, type_to_psql(typ)) for name, typ in hints.items())
+        return tuple((name, py_type_to_psql_schema(typ)) for name, typ in hints.items())
+
+    @classmethod
+    def table_psql_types(cls) -> Sequence[tuple[str, str]]:
+        """Generate the corresponding PostgreSQL types for each column."""
+        hints = get_type_hints(cls, include_extras=True)
+        return tuple((name, py_type_to_psql_type(typ)) for name, typ in hints.items())
 
     @classmethod
     def vector_column(cls) -> Optional[IndexColumn[VectorIndex]]:
@@ -485,7 +531,9 @@ class DefaultDocument(Table, kw_only=True):
     uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
     title: str = ""
     text: str
-    created_at: datetime = msgspec.field(default_factory=datetime.now)
+    created_at: datetime = msgspec.field(
+        default_factory=partial(datetime.now, timezone.utc)
+    )
 
 
 class _DefaultChunk(Table, kw_only=True):

@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import partial
 from typing import Annotated
 
 import httpx
@@ -27,7 +28,9 @@ class Document(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     title: str = ""
     text: str
-    updated_at: datetime = msgspec.field(default_factory=datetime.now)
+    updated_at: datetime = msgspec.field(
+        default_factory=partial(datetime.now, timezone.utc)
+    )
 
 
 class Chunk(Table, kw_only=True):
