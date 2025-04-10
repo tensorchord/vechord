@@ -319,7 +319,10 @@ class VechordRegistry:
             raise ValueError(f"not all the objects are {cls}")
 
         name = objs[0].name()
-        self.client.copy_bulk(name, [obj.todict() for obj in objs])
+        values = [obj.todict() for obj in objs]
+        keys = set(values[0].keys())
+        types = (v for k, v in objs[0].table_psql_types() if k in keys)
+        self.client.copy_bulk(name, values, types)
 
     def inject(
         self, input: Optional[type[Table]] = None, output: Optional[type[Table]] = None

@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from functools import partial
 from os import environ
 from typing import Annotated, Optional
 
@@ -12,6 +13,7 @@ from vechord.registry import VechordRegistry
 from vechord.spec import (
     ForeignKey,
     Keyword,
+    MultiVectorIndex,
     PrimaryKeyAutoIncrease,
     PrimaryKeyUUID,
     Table,
@@ -36,7 +38,9 @@ class Document(Table, kw_only=True):
     uid: PrimaryKeyAutoIncrease | None = None
     title: str = ""
     text: str
-    updated_at: datetime = msgspec.field(default_factory=datetime.now)
+    updated_at: datetime = msgspec.field(
+        default_factory=partial(datetime.now, timezone.utc)
+    )
 
 
 class Chunk(Table, kw_only=True):
@@ -264,3 +268,43 @@ def test_pipeline(registry):
     assert len(docs) == 1
     chunks = registry.select_by(Chunk.partial_init())
     assert len(chunks) == len(correct.split())
+
+
+@pytest.mark.db
+def test_multivec_copy(registry):
+    class Image(Table, kw_only=True):
+        uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+        text: str
+        vecs: Annotated[list[DenseVector], MultiVectorIndex(lists=2)]
+        dataset: Optional[str] = None
+        oid: Optional[int] = None
+
+    registry.register([Image])
+
+    contents = (
+        "hello world",
+        "hello there",
+        "hi there, how are you",
+        "the quick brown fox jumps over the lazy dog",
+        "Across the Great Wall we can reach every corner in the world",
+    )
+    registry.copy_bulk(
+        [
+            Image(text=text, vecs=[gen_vector() for _ in range(len(text.split()))])
+            for text in contents
+        ]
+    )
+
+    assert len(registry.select_by(Image.partial_init())) == len(contents)
+
+    registry.copy_bulk(
+        [
+            Image(
+                text="not bad as a test case",
+                vecs=[gen_vector() for _ in range(len(contents))],
+                dataset="test",
+                oid=0,
+            )
+        ]
+    )
+    assert len(registry.select_by(Image.partial_init())) == len(contents) + 1

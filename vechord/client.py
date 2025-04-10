@@ -196,7 +196,7 @@ class VechordClient:
             values,
         )
 
-    def copy_bulk(self, name: str, values: Sequence[dict]):
+    def copy_bulk(self, name: str, values: Sequence[dict], types: Sequence[str]):
         columns = sql.SQL(", ").join(map(sql.Identifier, values[0]))
         with self.transaction():
             cursor = self.get_cursor()
@@ -208,6 +208,7 @@ class VechordClient:
                     columns=columns,
                 )
             ) as copy:
+                copy.set_types(types=types)
                 for value in values:
                     copy.write_row(tuple(value.values()))
 
