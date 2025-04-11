@@ -321,7 +321,7 @@ class VechordRegistry:
         name = objs[0].name()
         values = [obj.todict() for obj in objs]
         keys = set(values[0].keys())
-        types = (v for k, v in objs[0].table_psql_types() if k in keys)
+        types = tuple(v for k, v in objs[0].table_psql_types() if k in keys)
         self.client.copy_bulk(name, values, types)
 
     def inject(

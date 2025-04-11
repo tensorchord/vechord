@@ -156,7 +156,9 @@ def test_index():
 
     multivec_idx = MultiVectorIndex(lists=1)
     assert multivec_idx.lists == 1
-    assert MultiVectorIndex().config() == "build.internal.lists = []"
+    index_config = MultiVectorIndex().config()
+    assert "spherical_centroids = true" in index_config
+    assert "lists = []" in index_config
 
 
 def test_annotated_index():

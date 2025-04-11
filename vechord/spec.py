@@ -375,7 +375,12 @@ class MultiVectorIndex(BaseIndex):
         self.op_symbol = "@#"
 
     def config(self):
-        return f"build.internal.lists = [{self.lists or ''}]"
+        return f"""
+residual_quantization = false
+[build.internal]
+lists = [{self.lists or ""}]
+spherical_centroids = true
+"""
 
 
 @dataclasses.dataclass
