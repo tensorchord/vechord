@@ -14,8 +14,8 @@ from vechord.model import Document
 class BaseHTMLParser(HTMLParser):
     """A simple HTML parser to extract text content."""
 
-    def __init__(self, *, convert_charrefs: bool = ...) -> None:
-        super().__init__(convert_charrefs=convert_charrefs)
+    def __init__(self) -> None:
+        super().__init__()
         self.content: list[str] = []
         self.skip = False
 
