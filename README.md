@@ -21,9 +21,8 @@ pip install vechord
 
 The related Docker images can be found in [VectorChord Suite][vectorchord-suite].
 
-- DockerHub: `tensorchord/vchord-suite:pg17-latest`
-- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-latest`
-
+- DockerHub: `tensorchord/vchord-suite:pg17-20250414`
+- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250414`
 ## Features
 
 - [x] vector search with [RaBitQ][rabitq] (powered by [VectorChord][vectorchord])
