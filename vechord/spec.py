@@ -398,6 +398,18 @@ class KeywordIndex(BaseIndex):
         return ""
 
 
+@dataclasses.dataclass
+class UniqueIndex(BaseIndex):
+    null_not_distinct: bool = False
+
+    def __post_init__(self):
+        self.verify()
+        self.name = "unique_idx"
+
+    def config(self):
+        return "NULLS NOT DISTINCT" if self.null_not_distinct else ""
+
+
 class Storage(msgspec.Struct):
     @classmethod
     def name(cls) -> str:
@@ -468,6 +480,17 @@ class Table(Storage):
                     if isinstance(m, KeywordIndex):
                         return IndexColumn(name, m)
         return None
+
+    @classmethod
+    def unique_columns(cls) -> Sequence[IndexColumn]:
+        """Get all the index columns."""
+        columns = []
+        for name, typ in get_type_hints(cls, include_extras=True).items():
+            if get_origin(typ) is Annotated:
+                for m in typ.__metadata__:
+                    if isinstance(m, UniqueIndex):
+                        columns.append(IndexColumn(name, m))
+        return columns
 
     @classmethod
     def non_vec_columns(cls) -> Sequence[str]:

@@ -110,6 +110,7 @@ class VechordRegistry:
                 table.vector_column(),
                 table.multivec_column(),
                 table.keyword_column(),
+                *table.unique_columns(),
             ):
                 if index_column is None:
                     continue
@@ -317,6 +318,8 @@ class VechordRegistry:
             raise ValueError(f"unsupported class {cls}")
         if not all(isinstance(obj, cls) for obj in objs):
             raise ValueError(f"not all the objects are {cls}")
+        if cls.keyword_column() is not None:
+            raise RuntimeError("`copy_bulk` does not support keyword column")
 
         name = objs[0].name()
         values = [obj.todict() for obj in objs]
