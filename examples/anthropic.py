@@ -4,13 +4,16 @@ Data can be found from "https://github.com/anthropics/anthropic-cookbook".
 """
 
 import json
+from pathlib import Path
+from time import perf_counter
 from typing import Annotated, Optional
 
 import httpx
 
 from vechord.augment import GeminiAugmenter
-from vechord.embedding import SpacyDenseEmbedding
+from vechord.embedding import GeminiDenseEmbedding
 from vechord.registry import VechordRegistry
+from vechord.rerank import CohereReranker, ReciprocalRankFusion
 from vechord.spec import (
     ForeignKey,
     Keyword,
@@ -20,8 +23,8 @@ from vechord.spec import (
     Vector,
 )
 
-DenseVector = Vector[96]
-emb = SpacyDenseEmbedding()
+DenseVector = Vector[768]
+emb = GeminiDenseEmbedding()
 vr = VechordRegistry("anthropic", "postgresql://postgres:postgres@172.17.0.1:5432/")
 
 
@@ -63,6 +66,9 @@ vr.register([Document, Chunk, ContextualChunk, Query])
 
 
 def download_data(url: str, save_path: str):
+    if Path(save_path).is_file():
+        print(f"{save_path} already exists, skip download.")
+        return
     with httpx.stream("GET", url) as response, open(save_path, "wb") as f:
         for chunk in response.iter_bytes():
             f.write(chunk)
@@ -96,24 +102,21 @@ def load_contextual_chunks(filepath: str):
     with open(filepath, "r", encoding="utf-8") as f:
         docs = json.load(f)
         for doc in docs:
-            vr.insert(
-                Document(
-                    uuid=doc["original_uuid"],
-                    content=doc["content"],
-                )
-            )
             augmenter.reset(doc["content"])
-            context = augmenter.augment_context(
-                [chunk["content"] for chunk in doc["chunks"]]
-            )
-            for i, chunk in enumerate(doc["chunks"]):
-                contextual_content = f"{chunk['content']}\n\n{context[i]}"
+            chunks = doc["chunks"]
+            augments = augmenter.augment_context([chunk["content"] for chunk in chunks])
+            if len(augments) != len(chunks):
+                print(
+                    f"augments length not match for uuid: {doc['original_uuid']}, {len(augments)} != {len(chunks)}"
+                )
+            for chunk, context in zip(chunks, augments, strict=False):
+                contextual_content = f"{chunk['content']}\n\n{context}"
                 vr.insert(
                     ContextualChunk(
                         doc_uuid=doc["original_uuid"],
                         index=chunk["original_index"],
                         content=chunk["content"],
-                        context=context[i],
+                        context=context,
                         vector=emb.vectorize_chunk(contextual_content),
                         keyword=Keyword(contextual_content),
                     )
@@ -141,22 +144,60 @@ def vector_search(query: Query, topk: int) -> list[Chunk]:
     return vr.search_by_vector(Chunk, query.vector, topk=topk)
 
 
-def hybrid_search(query: Query, topk: int) -> list[Chunk]:
-    kws = vr.search_by_keyword(Chunk, query.content, topk=topk)
-    return kws
-    # vecs = vr.search_by_vector(Chunk, query.vector, topk=topk)
-    # rrf = ReciprocalRankFusion()
-    # return rrf.fuse([vecs, kws])[:topk]
+def vector_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
+    return vr.search_by_vector(ContextualChunk, query.vector, topk=topk)
+
+
+def keyword_search(query: Query, topk: int) -> list[Chunk]:
+    return vr.search_by_keyword(Chunk, query.content, topk=topk)
+
+
+def keyword_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
+    return vr.search_by_keyword(ContextualChunk, query.content, topk=topk)
+
+
+def hybrid_search_fuse(query: Query, topk: int) -> list[Chunk]:
+    rrf = ReciprocalRankFusion()
+    return rrf.fuse([vector_search(query, topk), keyword_search(query, topk)])[:topk]
+
+
+def hybrid_contextual_search_fuse(query: Query, topk: int) -> list[ContextualChunk]:
+    rrf = ReciprocalRankFusion()
+    return rrf.fuse(
+        [vector_contextual_search(query, topk), keyword_contextual_search(query, topk)]
+    )[:topk]
+
+
+def hybrid_search_rerank(query: Query, topk: int, boost=3) -> list[Chunk]:
+    ranker = CohereReranker()
+    vecs = vector_search(query, topk * boost)
+    keys = keyword_search(query, topk * boost)
+    chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
+    indices = ranker.rerank(query.content, [chunk.content for chunk in chunks])
+    return [chunks[i] for i in indices[:topk]]
+
+
+def hybrid_contextual_search_rerank(
+    query: Query, topk: int, boost=3
+) -> list[ContextualChunk]:
+    ranker = CohereReranker()
+    vecs = vector_contextual_search(query, topk * boost)
+    keys = keyword_contextual_search(query, topk * boost)
+    chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
+    indices = ranker.rerank(
+        query.content, [f"{chunk.content}\n{chunk.context}" for chunk in chunks]
+    )
+    return [chunks[i] for i in indices[:topk]]
 
 
 def evaluate(topk=5, search_func=vector_search):
+    print(f"TopK={topk}, search by: {search_func.__name__}")
     queries: list[Query] = vr.select_by(Query.partial_init())
     total_score = 0
+    start = perf_counter()
     for query in queries:
         chunks: list[Chunk] = search_func(query, topk)
         count = 0
-        # print("expect:", query.doc_uuids, query.chunk_index)
-        # print("retrieved:", [(chunk.doc_uuid, chunk.index) for chunk in chunks])
         for doc_uuid, chunk_index in zip(
             query.doc_uuids, query.chunk_index, strict=True
         ):
@@ -167,19 +208,32 @@ def evaluate(topk=5, search_func=vector_search):
         score = count / len(query.doc_uuids)
         total_score += score
 
-    print(f"Pass@{topk}: {total_score / len(queries)}, total queries: {len(queries)}")
+    print(
+        f"Pass@{topk}: {total_score / len(queries):.4f}, total queries: {len(queries)}, QPS: {len(queries) / (perf_counter() - start):.3f}"
+    )
 
 
 if __name__ == "__main__":
-    # download_data(
-    #     "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/codebase_chunks.json",
-    #     "datasets/codebase_chunks.json",
-    # )
-    # download_data(
-    #     "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/evaluation_set.jsonl",
-    #     "datasets/evaluation_set.jsonl",
-    # )
-    # load_data("datasets/codebase_chunks.json")
-    # load_contextual_chunks("datasets/codebase_chunks.json")
-    # load_query("datasets/evaluation_set.jsonl")
-    evaluate(search_func=hybrid_search)
+    Path("datasets").mkdir(parents=True, exist_ok=True)
+    download_data(
+        "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/codebase_chunks.json",
+        "datasets/codebase_chunks.json",
+    )
+    download_data(
+        "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/evaluation_set.jsonl",
+        "datasets/evaluation_set.jsonl",
+    )
+    load_data("datasets/codebase_chunks.json")
+    load_query("datasets/evaluation_set.jsonl")
+    load_contextual_chunks("datasets/codebase_chunks.json")
+
+    for topk in [5, 10]:
+        print("=" * 50)
+        evaluate(topk=topk, search_func=vector_search)
+        evaluate(topk=topk, search_func=keyword_search)
+        evaluate(topk=topk, search_func=hybrid_search_fuse)
+        evaluate(topk=topk, search_func=hybrid_search_rerank)
+        evaluate(topk=topk, search_func=vector_contextual_search)
+        evaluate(topk=topk, search_func=keyword_contextual_search)
+        evaluate(topk=topk, search_func=hybrid_contextual_search_fuse)
+        evaluate(topk=topk, search_func=hybrid_contextual_search_rerank)
