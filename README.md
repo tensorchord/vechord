@@ -8,6 +8,7 @@
 [![GitHub License][license-badge]][license-link]
 [![PyPI - Version][pypi-badge]][pypi-link]
 [![Discord][discord-badge]][discord-link]
+[![Blog][blog-badge]][blog-link]
 
 </p>
 <p><em>Turn PostgreSQL into your search engine in a Pythonic way.</em></p>
@@ -54,7 +55,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 
 For more details, check our [API reference][document-api] and [User Guide][document-guide].
 ### Define the table
-
+shie
 ```python
 from typing import Annotated, Optional
 from vechord.spec import Table, Vector, PrimaryKeyAutoIncrease, ForeignKey
@@ -190,3 +191,5 @@ make format
 [discord-badge]: https://img.shields.io/discord/974584200327991326?&logoColor=white&color=5865F2&style=flat&logo=discord&cacheSeconds=60
 [discord-link]: https://discord.gg/KqswhpVgdU
 [vectorchord-suite]: https://github.com/tensorchord/VectorChord-images
+[blog-badge]: https://img.shields.io/badge/VectorChrod-Blog-DAFDBA
+[blog-link]: https://blog.vectorchord.ai/
