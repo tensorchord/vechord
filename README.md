@@ -46,7 +46,8 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 - [beir.py](examples/beir.py): the most flexible way to use the library (loading, indexing, querying and evaluation)
 - [web.py](examples/web.py): build a web application with from the defined tables and pipeline
 - [essay.py](examples/essay.py): extract the content from Paul Graham's essays and evaluate the search results from LLM generated queries
-- [contextual.py](examples/contextual.py): contextual retrieval example
+- [contextual.py](examples/contextual.py): contextual retrieval example with local PDF
+- [anthropic.py](examples/anthropic.py): contextual retrieval with the Anthropic's Tutorial example
 - [hybrid.py](examples/hybrid.py): hybrid search that rerank the results from vector search with keyword search
 
 ## User Guide
