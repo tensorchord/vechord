@@ -55,7 +55,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 
 For more details, check our [API reference][document-api] and [User Guide][document-guide].
 ### Define the table
-shie
+
 ```python
 from typing import Annotated, Optional
 from vechord.spec import Table, Vector, PrimaryKeyAutoIncrease, ForeignKey
