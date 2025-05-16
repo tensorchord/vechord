@@ -14,6 +14,7 @@ from vechord.spec import (
     Keyword,
     KeywordIndex,
     MultiVectorIndex,
+    UniqueIndex,
     VectorIndex,
 )
 
@@ -118,20 +119,31 @@ class VechordClient:
     def create_index_if_not_exists(self, name: str, column: IndexColumn):
         with self.transaction():
             cursor = self.get_cursor()
-            query = sql.SQL(
-                "CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
-                "USING {index} ({column} {op_name})"
-            ).format(
-                index_name=sql.Identifier(self._index_name(name, column)),
-                table=sql.Identifier(f"{self.ns}_{name}"),
-                index=sql.SQL(column.index.index),
-                column=sql.Identifier(column.name),
-                op_name=sql.SQL(column.index.op_name),
-            )
-            if config := column.index.config():
-                query += sql.SQL(" WITH (options = $${config}$$)").format(
-                    config=sql.SQL(config)
+            if isinstance(column.index, UniqueIndex):
+                query = sql.SQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} "
+                    "({column}) {config}"
+                ).format(
+                    index_name=sql.Identifier(self._index_name(name, column)),
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    column=sql.Identifier(column.name),
+                    config=sql.SQL(column.index.config()),
                 )
+            else:
+                query = sql.SQL(
+                    "CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
+                    "USING {index} ({column} {op_name})"
+                ).format(
+                    index_name=sql.Identifier(self._index_name(name, column)),
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    index=sql.SQL(column.index.index),
+                    column=sql.Identifier(column.name),
+                    op_name=sql.SQL(column.index.op_name),
+                )
+                if config := column.index.config():
+                    query += sql.SQL(" WITH (options = $${config}$$)").format(
+                        config=sql.SQL(config)
+                    )
             cursor.execute(query)
 
     def _index_name(self, name: str, column: IndexColumn):

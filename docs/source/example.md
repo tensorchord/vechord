@@ -24,6 +24,12 @@
 :code: python
 ```
 
+## Contextual retrieval with the Anthropic example
+
+```{include} ../../examples/anthropic.py
+:code: python
+```
+
 ## Evaluate with generated queries
 
 ```{include} ../../examples/essay.py

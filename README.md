@@ -8,6 +8,7 @@
 [![GitHub License][license-badge]][license-link]
 [![PyPI - Version][pypi-badge]][pypi-link]
 [![Discord][discord-badge]][discord-link]
+[![Blog][blog-badge]][blog-link]
 
 </p>
 <p><em>Turn PostgreSQL into your search engine in a Pythonic way.</em></p>
@@ -46,7 +47,8 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 - [beir.py](examples/beir.py): the most flexible way to use the library (loading, indexing, querying and evaluation)
 - [web.py](examples/web.py): build a web application with from the defined tables and pipeline
 - [essay.py](examples/essay.py): extract the content from Paul Graham's essays and evaluate the search results from LLM generated queries
-- [contextual.py](examples/contextual.py): contextual retrieval example
+- [contextual.py](examples/contextual.py): contextual retrieval example with local PDF
+- [anthropic.py](examples/anthropic.py): contextual retrieval with the Anthropic's Tutorial example
 - [hybrid.py](examples/hybrid.py): hybrid search that rerank the results from vector search with keyword search
 
 ## User Guide
@@ -189,3 +191,5 @@ make format
 [discord-badge]: https://img.shields.io/discord/974584200327991326?&logoColor=white&color=5865F2&style=flat&logo=discord&cacheSeconds=60
 [discord-link]: https://discord.gg/KqswhpVgdU
 [vectorchord-suite]: https://github.com/tensorchord/VectorChord-images
+[blog-badge]: https://img.shields.io/badge/VectorChrod-Blog-DAFDBA
+[blog-link]: https://blog.vectorchord.ai/

@@ -78,19 +78,18 @@ class GeminiAugmenter(BaseAugmenter):
             for chunk in chunks:
                 context = prompt.format(chunk=chunk)
                 if self.doc:
-                    context = f"<document>{self.doc}</document>\n" + context
+                    context = f"<document>\n{self.doc}\n</document>\n" + context
                 response = self.client.generate_content([context])
                 res.append(response.text)
         except Exception as e:
             logger.error("GeminiAugmenter error: %s", e)
-            breakpoint()
         return res
 
     def augment_context(self, chunks: list[str]) -> list[str]:
         """Generate the contextual chunks."""
         prompt = (
-            "Here is the chunk we want to situate within the whole document "
-            "<chunk>{chunk}</chunk>"
+            "Here is the chunk we want to situate within the whole document \n"
+            "<chunk>\n{chunk}\n</chunk>\n"
             "Please give a short succinct context to situate this chunk within "
             "the overall document for the purposes of improving search retrieval "
             "of the chunk. Answer only with the succinct context and nothing else."
@@ -100,8 +99,8 @@ class GeminiAugmenter(BaseAugmenter):
     def augment_query(self, chunks: list[str]) -> list[str]:
         """Generate the queries for chunks."""
         prompt = (
-            "Here is the chunk we want to ask questions about "
-            "<chunk>{chunk}</chunk>"
+            "Here is the chunk we want to ask questions about \n"
+            "<chunk>\n{chunk}\n</chunk>\n"
             "Please ask questions about this chunk based on the overall document "
             "for the purposes of improving search retrieval of the chunk. "
             "Answer only with the question and nothing else."

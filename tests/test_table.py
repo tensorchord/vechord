@@ -6,6 +6,7 @@ from typing import Annotated, Optional
 import msgspec
 import numpy as np
 import pytest
+from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
 
 from vechord.log import logger
@@ -17,6 +18,7 @@ from vechord.spec import (
     PrimaryKeyAutoIncrease,
     PrimaryKeyUUID,
     Table,
+    UniqueIndex,
     Vector,
     VectorIndex,
 )
@@ -111,6 +113,27 @@ def test_annotated_index(registry):
 
     res = registry.search_by_vector(AnnotatedChunk, gen_vector(), topk=topk)
     assert len(res) == topk
+
+
+@pytest.mark.db
+def test_unique_index(registry):
+    class UniqueTable(Table, kw_only=True):
+        uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+        sid: Annotated[str, UniqueIndex()]
+
+    class SubTable(Table, kw_only=True):
+        uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+        text: str
+        foreign_key: Annotated[str, ForeignKey[UniqueTable.sid]]
+
+    registry.register([UniqueTable, SubTable])
+    registry.insert(UniqueTable(sid="id_0"))
+    with pytest.raises(UniqueViolation):
+        registry.insert(UniqueTable(sid="id_0"))
+    registry.insert(SubTable(text="hello", foreign_key="id_0"))
+    registry.remove_by(UniqueTable.partial_init(sid="id_0"))
+    assert len(registry.select_by(UniqueTable.partial_init())) == 0
+    assert len(registry.select_by(SubTable.partial_init())) == 0
 
 
 @pytest.mark.db

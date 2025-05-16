@@ -1,6 +1,6 @@
 # Toolkit
 
-We provides some basic tools to help you build the RAG pipeline. But it's not limited to thses
+We provides some basic tools to help you build the RAG pipeline. But it's not limited to these
 internal tools. You can use whatever you like.
 
 You may need to install with extras:
