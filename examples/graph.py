@@ -1,5 +1,4 @@
 import csv
-import itertools
 import zipfile
 from pathlib import Path
 from typing import Iterator
@@ -149,7 +148,35 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
             )
 
 
-def expand_by_entity(chunk: Chunk) -> list[Chunk]:
+def expand_by_text(text: str) -> list[Chunk]:
+    ents = ner.predict(text)
+    chunks = []
+    for ent in ents:
+        chunks.extend(
+            res[0]
+            for res in [
+                vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
+                for chunk_uuid in ent.chunk_uuids
+            ]
+        )
+    return chunks
+
+
+def expand_by_similar_entity(entity: Entity, topk=3) -> list[Chunk]:
+    ents = vr.search_by_vector(Entity, entity.vec, topk=topk)
+    chunks = []
+    for ent in ents:
+        chunks.extend(
+            res[0]
+            for res in [
+                vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
+                for chunk_uuid in ent.chunk_uuids
+            ]
+        )
+    return chunks
+
+
+def expand_by_chunk(chunk: Chunk) -> list[Chunk]:
     # TODO: add special SQL support
     # TODO: scores
     ents = [
@@ -174,11 +201,9 @@ def expand_by_entity(chunk: Chunk) -> list[Chunk]:
 
 
 @vr.inject(input=Query)
-def evaluate(cid: str, vector: DenseVector) -> Evaluation:
+def evaluate(cid: str, text: str, vector: DenseVector) -> Evaluation:
     chunks: list[Chunk] = vr.search_by_vector(Chunk, vector, topk=TOP_K)
-    expands = list(
-        itertools.chain.from_iterable(expand_by_entity(chunk) for chunk in chunks)
-    )
+    expands = expand_by_text(text)
     final_chunks = list({chunk.uuid: chunk for chunk in chunks + expands}.values())
     # TODO: rerank
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in final_chunks])
