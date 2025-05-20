@@ -3,6 +3,7 @@ from datetime import datetime
 import msgspec
 
 
+# `frozen=True` is required to make it hashable
 class Entity(msgspec.Struct, kw_only=True, frozen=True):
     text: str
     label: str
