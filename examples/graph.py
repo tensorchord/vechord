@@ -152,11 +152,15 @@ def expand_by_text(text: str) -> list[Chunk]:
     ents = ner.predict(text)
     chunks = []
     for ent in ents:
+        entity = vr.select_by(Entity.partial_init(text=ent.text))
+        if not entity:
+            continue
+        entity = entity[0]
         chunks.extend(
             res[0]
             for res in [
                 vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
-                for chunk_uuid in ent.chunk_uuids
+                for chunk_uuid in entity.chunk_uuids
             ]
         )
     return chunks
