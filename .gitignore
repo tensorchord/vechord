@@ -192,3 +192,6 @@ vechord/__version__.py
 
 # datasets
 datasets/
+
+# img
+*.png
