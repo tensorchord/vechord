@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 
+import httpx
 import msgspec
 
 from vechord.model import Entity, Relation
@@ -120,65 +121,103 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
 
 
 class GeminiEntityRecognizer(BaseEntityRecognizer):
-    """Entity recognizer using Gemini API."""
+    """Entity recognizer using Gemini API.
+
+    Since Gemini SDK doesn't support passing JSON schema directly, we have to
+    build the HTTP request manually. Otherwise, we can only use pydantic models
+    to define the returned types, which is not ideal for this use case. Internally,
+    Gemini also generates the JSON schema from the pydantic model.
+    """
 
     def __init__(self, model: str = "gemini-2.5-flash-preview-05-20"):
-        key = os.environ.get("GEMINI_API_KEY")
-        if not key:
+        self.model = model
+        self.key = os.environ.get("GEMINI_API_KEY")
+        if not self.key:
             raise ValueError("env GEMINI_API_KEY not set")
 
-        from google import genai
+        self.url = (
+            "https://generativelanguage.googleapis.com/v1alpha/models/"
+            f"{self.model}:generateContent"
+        )
+        self.session = httpx.Client(
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(30.0, connect=5.0),
+        )
 
-        self.model = model
-        self.client = genai.Client()
+    def query(self, prompt: str, schema: type):
+        json_schema = msgspec.json.schema(schema)
+        resp = self.session.post(
+            url=self.url,
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "response_mime_type": "application/json",
+                    "response_json_schema": json_schema,
+                },
+            },
+            params={"key": self.key},
+        )
+        if resp.is_error:
+            raise ValueError(f"Failed to query Gemini API: {resp.text}")
+        return resp
 
-    def recognize(self, text):
+    def recognize(self, text) -> list[Entity]:
         prompt = (
             "Given the text document, identify and extract all the entities, return the JSON "
             "format with the following fields: "
             "- text: the entity text "
-            "- label: the entity type (e.g., PER, ORG, LOC, TIME, NUM, GPE, VEH etc.) "
+            "- label: the entity type (e.g., PER, ORG, LOC, TIME, GPE, VEH etc.) "
             "- description: a brief description of the entity in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt.format(text=text),
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": list[Entity],
-            },
+        resp = self.query(
+            prompt=prompt.format(text=text),
+            schema=list[Entity],
         )
         try:
-            ents = msgspec.json.decode(resp.text, type=list[Entity])
-        except msgspec.DecodeError as err:
+            data = msgspec.json.decode(resp.content)
+            ents = msgspec.json.decode(
+                data["candidates"][0]["content"]["parts"][0]["text"], type=list[Entity]
+            )
+        except (msgspec.DecodeError, KeyError) as err:
+            breakpoint()
             raise ValueError(f"Failed to decode Gemini response: {err}") from err
         return ents
 
-    def recognize_with_relations(self, text):
-        ents = self.recognize(text)
+    def recognize_with_relations(self, text) -> tuple[list[Entity], list[Relation]]:
         prompt = (
-            "Given the text document, extract relations between entities in the text. "
-            "Return a list of relations with source and target entities in JSON format like: "
-            "- source: the source entity (text and label) "
-            "- target: the target entity (text and label) "
+            "Given the text document, extract entities and the possbile relations "
+            "between them. Return a list of relations with source and target "
+            "entities in JSON format like: "
+            "- source: the source entity (text, label and description) "
+            "- target: the target entity (text, label and description) "
             "- description: a brief description of the relation in the current context "
             "\n<document>\n{text}\n</document>\n"
-            "known entities are: {entities}"
         )
-        resp = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt.format(
-                text=text,
-                entities=", ".join(f"{ent.text} ({ent.label})" for ent in ents),
-            ),
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": list[Relation],
-            },
+        resp = self.query(
+            prompt=prompt.format(text=text),
+            schema=list[Relation],
         )
         try:
-            rels = msgspec.json.decode(resp.text, type=list[Relation])
-        except msgspec.DecodeError as err:
+            data = msgspec.json.decode(resp.content)
+            rels = msgspec.json.decode(
+                data["candidates"][0]["content"]["parts"][0]["text"],
+                type=list[Relation],
+            )
+        except (msgspec.DecodeError, KeyError) as err:
+            breakpoint()
             raise ValueError(f"Failed to decode Gemini response: {err}") from err
-        return ents, rels
+        ents: dict[str, Entity] = {}
+        for rel in rels:
+            ents[rel.source.text] = rel.source
+            ents[rel.target.text] = rel.target
+        return list(ents.values()), rels
+
+
+if __name__ == "__main__":
+    recognizer = GeminiEntityRecognizer()
+    text = "Barack Obama was the 44th President of the United States. He was born in Hawaii. His wife, Michelle Obama, is a lawyer and writer."
+
+    ents, rels = recognizer.recognize_with_relations(text)
+    print(ents)
+    print(rels)
