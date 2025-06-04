@@ -73,6 +73,11 @@ doc = [
     "sphinxcontrib-napoleon>=0.7",
     "sphinxext-opengraph>=0.9.1",
 ]
+graph = [
+    "matplotlib>=3.10.3",
+    "networkx>=3.4.2",
+    "scipy>=1.15.3",
+]
 
 [tool.pytest.ini_options]
 markers = [

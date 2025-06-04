@@ -39,6 +39,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
   - [x] `Embedding` to generate the embedding from the text
   - [x] `Evaluator` to evaluate the search results with `NDCG`, `MAP`, `Recall`, etc.
   - [x] `Extractor` to extract the content from PDF, HTML, etc.
+  - [x] `EntityRecognizer` to extract the entities and relations from the text
   - [x] `Reranker` for hybrid search
 
 ## Examples
@@ -50,6 +51,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 - [contextual.py](examples/contextual.py): contextual retrieval example with local PDF
 - [anthropic.py](examples/anthropic.py): contextual retrieval with the Anthropic's Tutorial example
 - [hybrid.py](examples/hybrid.py): hybrid search that rerank the results from vector search with keyword search
+- [graph.py](examples/graph.py): graph-like entity-relation retrieval
 
 ## User Guide
 

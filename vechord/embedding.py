@@ -37,7 +37,12 @@ class BaseEmbedding(ABC):
 
 
 class SpacyDenseEmbedding(BaseEmbedding):
-    """Spacy Dense Embedding."""
+    """Spacy Dense Embedding.
+
+    The default small model is unlikely to be useful for real applications.
+    It's recommended to use the small model for development and testing
+    purpose only.
+    """
 
     def __init__(self, model: str = "en_core_web_sm", dim: int = 96):
         import spacy

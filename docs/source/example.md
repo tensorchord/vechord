@@ -41,3 +41,9 @@
 ```{include} ../../examples/hybrid.py
 :code: python
 ```
+
+## Entity-relation graph-like retrieval
+
+```{include} ../../examples/graph.py
+:code: python
+```
