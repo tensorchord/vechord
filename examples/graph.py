@@ -8,8 +8,8 @@ import httpx
 import msgspec
 import rich.progress
 
-from vechord.embedding import SpacyDenseEmbedding
-from vechord.entity import SpacyEntityRecognizer
+from vechord.embedding import GeminiDenseEmbedding
+from vechord.entity import GeminiEntityRecognizer
 from vechord.evaluate import BaseEvaluator
 from vechord.registry import VechordRegistry
 from vechord.spec import PrimaryKeyUUID, Table, Vector
@@ -18,9 +18,9 @@ BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{
 DEFAULT_DATASET = "scifact"
 TOP_K = 10
 
-DenseVector = Vector[96]
-emb = SpacyDenseEmbedding()
-ner = SpacyEntityRecognizer()
+DenseVector = Vector[768]
+emb = GeminiDenseEmbedding()
+ner = GeminiEntityRecognizer()
 
 
 def download_dataset(dataset: str, output: Path):
