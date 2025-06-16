@@ -180,7 +180,6 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
                 data["candidates"][0]["content"]["parts"][0]["text"], type=list[Entity]
             )
         except (msgspec.DecodeError, KeyError) as err:
-            breakpoint()
             raise ValueError(f"Failed to decode Gemini response: {err}") from err
         return ents
 
@@ -205,7 +204,6 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
                 type=list[Relation],
             )
         except (msgspec.DecodeError, KeyError) as err:
-            breakpoint()
             raise ValueError(f"Failed to decode Gemini response: {err}") from err
         ents: dict[str, Entity] = {}
         for rel in rels:
