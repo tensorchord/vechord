@@ -185,7 +185,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
 
     def recognize_with_relations(self, text) -> tuple[list[Entity], list[Relation]]:
         prompt = (
-            "Given the text document, extract entities and the possbile relations "
+            "Given the text document, extract entities and the possible relations "
             "between them. Return a list of relations with source and target "
             "entities in JSON format like: "
             "- source: the source entity (text, label and description) "
