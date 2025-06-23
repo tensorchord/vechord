@@ -1,4 +1,6 @@
+from contextlib import AsyncExitStack
 from functools import wraps
+from inspect import iscoroutinefunction
 from typing import (
     Any,
     Callable,
@@ -49,7 +51,7 @@ class VechordPipeline:
         self.client = client
         self.steps = steps
 
-    def run(self, *args, **kwargs) -> Any:
+    async def run(self, *args, **kwargs) -> Any:
         """Execute the pipeline in a transactional manner.
 
         All the `args` and `kwargs` will be passed to the first function in the
@@ -59,12 +61,13 @@ class VechordPipeline:
 
         This will also return the final result of the last function in the pipeline.
         """
-        with self.client.transaction(), limit_to_transaction_buffer():
-            # only the 1st one can accept input (could be empty)
-            self.steps[0](*args, **kwargs)
-            for func in self.steps[1:-1]:
-                func()
-            return self.steps[-1]()
+        async with self.client.transaction():
+            with limit_to_transaction_buffer():
+                # only the 1st one can accept input (could be empty)
+                await self.steps[0](*args, **kwargs)
+                for func in self.steps[1:-1]:
+                    await func()
+                return await self.steps[-1]()
 
 
 class VechordRegistry:
@@ -74,35 +77,60 @@ class VechordRegistry:
         namespace: the namespace for this registry, will be the prefix for all the
             tables registered.
         url: the PostgreSQL URL to connect to.
+        tables: a list of Table classes to be registered.
+        create_index: whether or not to create the index if not exists.
     """
 
-    def __init__(self, namespace: str, url: str):
+    def __init__(
+        self,
+        namespace: str,
+        url: str,
+        *,
+        tables: Iterator[type[Table]] = (),
+        create_index: bool = True,
+    ):
         self.ns = namespace
         self.client = VechordClient(namespace, url)
         self.tables: list[type[Table]] = []
+        self.create_index = create_index
         self.pipeline: list[Callable] = []
+        self._inited = False
 
-    def register(self, tables: list[type[Table]], create_index: bool = True):
-        """Register the given tables to the registry.
-
-        This will create the tables in the database if not exists.
-
-        Args:
-            tables: a list of Table classes to be registered.
-            create_index: whether or not to create the index if not exists.
-        """
         for table in tables:
             if not issubclass(table, Table):
                 raise ValueError(f"unsupported class {table}")
-
-            self.client.create_table_if_not_exists(table.name(), table.table_schema())
-            logger.debug("create table %s if not exists", table.name())
             self.tables.append(table)
 
-            if table.keyword_column() is not None:
-                self.client.create_tokenizer()
+    async def __aenter__(self):
+        if not self._inited:
+            self._async_exit_stack = AsyncExitStack()
+            await self._async_exit_stack.enter_async_context(self.client)
+            await self.init_table_index()
+            self._inited = True
+        return self
 
-            if not create_index:
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self._async_exit_stack.aclose()
+
+    async def process_startup(self, scope, event):
+        """Falcon ASGI middleware lifespan hook."""
+        await self.__aenter__()
+
+    async def process_shutdown(self, scope, event):
+        """Falcon ASGI middleware lifespan hook."""
+        await self.__aexit__(None, None, None)
+
+    async def init_table_index(self):
+        for table in self.tables:
+            await self.client.create_table_if_not_exists(
+                table.name(), table.table_schema()
+            )
+            logger.debug("create table %s if not exists", table.name())
+
+            if table.keyword_column() is not None:
+                await self.client.create_tokenizer()
+
+            if not self.create_index:
                 continue
 
             # create index
@@ -114,7 +142,7 @@ class VechordRegistry:
             ):
                 if index_column is None:
                     continue
-                self.client.create_index_if_not_exists(table.name(), index_column)
+                await self.client.create_index_if_not_exists(table.name(), index_column)
                 logger.debug(
                     "create index for %s.%s if not exists",
                     table.name(),
@@ -129,7 +157,7 @@ class VechordRegistry:
         """
         return VechordPipeline(client=self.client, steps=steps)
 
-    def select_by(
+    async def select_by(
         self,
         obj: T,
         fields: Optional[Sequence[str]] = None,
@@ -158,13 +186,13 @@ class VechordRegistry:
             fields = cls_fields
 
         kvs = obj.todict()
-        res = self.client.select(cls.name(), fields, kvs, limit=limit)
+        res = await self.client.select(cls.name(), fields, kvs, limit=limit)
         return [
             cls.partial_init(**{k: v for k, v in zip(fields, r, strict=False)})
             for r in res
         ]
 
-    def search_by_vector(
+    async def search_by_vector(
         self,
         cls: type[T],
         vec: np.ndarray,
@@ -188,7 +216,7 @@ class VechordRegistry:
         vec_col = cls.vector_column()
         if vec_col is None:
             raise ValueError(f"no vector column found in {cls}")
-        res = self.client.query_vec(
+        res = await self.client.query_vec(
             cls.name(),
             vec_col,
             vec,
@@ -201,7 +229,7 @@ class VechordRegistry:
             for r in res
         ]
 
-    def search_by_multivec(  # noqa: PLR0913
+    async def search_by_multivec(  # noqa: PLR0913
         self,
         cls: type[T],
         multivec: np.ndarray,
@@ -229,7 +257,7 @@ class VechordRegistry:
         multivec_col = cls.multivec_column()
         if multivec_col is None:
             raise ValueError(f"no multivec column found in {cls}")
-        res = self.client.query_multivec(
+        res = await self.client.query_multivec(
             cls.name(),
             multivec_col,
             multivec,
@@ -243,7 +271,7 @@ class VechordRegistry:
             for r in res
         ]
 
-    def search_by_keyword(
+    async def search_by_keyword(
         self,
         cls: type[T],
         keyword: str,
@@ -265,7 +293,7 @@ class VechordRegistry:
         keyword_col = cls.keyword_column()
         if keyword_col is None:
             raise ValueError(f"no keyword column found in {cls}")
-        res = self.client.query_keyword(
+        res = await self.client.query_keyword(
             cls.name(),
             keyword_col,
             keyword,
@@ -278,7 +306,7 @@ class VechordRegistry:
             for r in res
         ]
 
-    def remove_by(self, obj: Table):
+    async def remove_by(self, obj: Table):
         """Remove the given object from the DB.
 
         Args:
@@ -289,9 +317,9 @@ class VechordRegistry:
             raise ValueError(f"unsupported class {type(obj)}")
 
         kvs = obj.todict()
-        self.client.delete(obj.__class__.name(), kvs)
+        await self.client.delete(obj.__class__.name(), kvs)
 
-    def insert(self, obj: Table):
+    async def insert(self, obj: Table):
         """Insert the given object to the DB.
 
         Args:
@@ -299,9 +327,9 @@ class VechordRegistry:
         """
         if not isinstance(obj, Table):
             raise ValueError(f"unsupported class {type(obj)}")
-        self.client.insert(obj.name(), obj.todict())
+        await self.client.insert(obj.name(), obj.todict())
 
-    def copy_bulk(self, objs: list[Table]):
+    async def copy_bulk(self, objs: list[Table]):
         """Insert the given list of objects to the DB.
 
         This is more efficient than calling `insert` for each object.
@@ -325,7 +353,7 @@ class VechordRegistry:
         values = [obj.todict() for obj in objs]
         keys = set(values[0].keys())
         types = tuple(v for k, v in objs[0].table_psql_types() if k in keys)
-        self.client.copy_bulk(name, values, types)
+        await self.client.copy_bulk(name, values, types)
 
     def inject(
         self, input: Optional[type[Table]] = None, output: Optional[type[Table]] = None
@@ -360,39 +388,47 @@ class VechordRegistry:
                     f"requires the return type for {func} if `output` is set"
                 )
 
+            _is_async = iscoroutinefunction(func)
+
+            async def execute_func(*args, **kwargs):
+                if _is_async:
+                    return await func(*args, **kwargs)
+                return func(*args, **kwargs)
+
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            async def wrapper(*args, **kwargs):
                 arguments = [args]
                 if input is not None:
-                    arguments = self.client.select(
+                    arguments = await self.client.select(
                         input.name(),
                         columns,
                         from_buffer=select_transaction_buffer.get(),
                     )
 
                 if output is None:
-                    return [func(*arg, **kwargs) for arg in arguments]
+                    return [await execute_func(*arg, **kwargs) for arg in arguments]
 
                 count = 0
                 use_copy = output.keyword_column() is None
                 if is_list_of_type(returns):
                     for arg in arguments:
                         if use_copy:
-                            rets = list(func(*arg, **kwargs))
-                            self.copy_bulk(rets)
+                            rets = list(await execute_func(*arg, **kwargs))
+                            await self.copy_bulk(rets)
                             count += len(rets)
                         else:
-                            for ret in func(*arg, **kwargs):
-                                self.insert(ret)
+                            for ret in await execute_func(*arg, **kwargs):
+                                await self.insert(ret)
                                 count += 1
                 elif use_copy:
-                    rets = list(func(*args, **kwargs) for args in arguments)
-                    self.copy_bulk(rets)
+                    # ref https://github.com/python/cpython/issues/76294
+                    rets = [await execute_func(*arg, **kwargs) for arg in arguments]
+                    await self.copy_bulk(rets)
                     count += len(rets)
                 else:
                     for arg in arguments:
-                        ret = func(*arg, **kwargs)
-                        self.insert(ret)
+                        ret = await execute_func(*arg, **kwargs)
+                        await self.insert(ret)
                         count += 1
                 logger.debug("inserted %d items to %s", count, output.name())
 
@@ -400,7 +436,7 @@ class VechordRegistry:
 
         return decorator
 
-    def clear_storage(self, drop_table: bool = False):
+    async def clear_storage(self, drop_table: bool = False):
         """Clear the storage of the registry.
 
         Args:
@@ -408,6 +444,6 @@ class VechordRegistry:
         """
         for table in self.tables:
             if drop_table:
-                self.client.drop(table.name())
+                await self.client.drop(table.name())
             else:
-                self.remove_by(table.partial_init())
+                await self.remove_by(table.partial_init())

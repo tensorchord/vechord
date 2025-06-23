@@ -1,8 +1,8 @@
 import os
 from abc import ABC, abstractmethod
-from datetime import timedelta
 
-from vechord.log import logger
+import httpx
+import msgspec
 
 
 class BaseAugmenter(ABC):
@@ -16,15 +16,15 @@ class BaseAugmenter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def augment_context(self, chunks: list[str]) -> list[str]:
+    async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
         raise NotImplementedError
 
     @abstractmethod
-    def augment_query(self, chunks: list[str]) -> list[str]:
+    async def augment_query(self, doc: str, chunks: list[str]) -> list[str]:
         raise NotImplementedError
 
     @abstractmethod
-    def summarize_doc(self) -> str:
+    async def summarize_doc(self, doc: str) -> str:
         raise NotImplementedError
 
 
@@ -35,57 +35,49 @@ class GeminiAugmenter(BaseAugmenter):
     Minimal cache token is 32768.
     """
 
-    def __init__(self, model: str = "models/gemini-1.5-flash-001", ttl_sec: int = 600):
-        key = os.environ.get("GEMINI_API_KEY")
-        if not key:
+    def __init__(self, model: str = "gemini-2.5-flash"):
+        self.api_key = os.environ.get("GEMINI_API_KEY")
+        if not self.api_key:
             raise ValueError("env GEMINI_API_KEY not set")
 
-        self.model_name = model
-        self.ttl_sec = ttl_sec
+        self.model = model
         self.min_token = 32768
+        self.url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model}:generateContent"
+        )
+        self.client = httpx.AsyncClient(
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(120.0, connect=5.0),
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self.client.aclose()
 
     def name(self) -> str:
-        return f"gemini_augment_{self.model_name}"
+        return f"gemini_augment_{self.model}"
 
-    def reset(self, doc: str):
-        """Reset the document."""
-        import google.generativeai as genai
-
-        self.client = genai.GenerativeModel(model_name=self.model_name)
-        tokens = self.client.count_tokens(doc).total_tokens
-        self.doc = ""  # empty means doc is in the cache
-        if tokens <= self.min_token:
-            # cannot use cache due to the Gemini token limit
-            self.doc = doc
-        else:
-            logger.debug("use cache since the doc has %d tokens", tokens)
-            cache = genai.caching.CachedContent.create(
-                model=self.model_name,
-                system_instruction=(
-                    "You are an expert on the natural language understanding. "
-                    "Answer the questions based on the whole document you have access to."
-                ),
-                contents=doc,
-                ttl=timedelta(seconds=self.ttl_sec),
-            )
-            self.client = genai.GenerativeModel.from_cached_content(
-                cached_content=cache
-            )
-
-    def augment(self, chunks: list[str], prompt: str) -> list[str]:
+    async def augment(self, doc: str, chunks: list[str], prompt: str) -> list[str]:
         res = []
-        try:
-            for chunk in chunks:
-                context = prompt.format(chunk=chunk)
-                if self.doc:
-                    context = f"<document>\n{self.doc}\n</document>\n" + context
-                response = self.client.generate_content([context])
-                res.append(response.text)
-        except Exception as e:
-            logger.error("GeminiAugmenter error: %s", e)
+        for chunk in chunks:
+            context = prompt.format(chunk=chunk)
+            context = f"<document>\n{doc}\n</document>\n" + context
+            resp = await self.client.post(
+                url=self.url,
+                json={"contents": [{"parts": [{"text": context}]}]},
+                params={"key": self.api_key},
+            )
+            if resp.is_error:
+                raise RuntimeError(f"Failed to augment with Gemini: {resp.text}")
+            data = msgspec.json.decode(resp.content)
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            res.append(text.strip())
         return res
 
-    def augment_context(self, chunks: list[str]) -> list[str]:
+    async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
         """Generate the contextual chunks."""
         prompt = (
             "Here is the chunk we want to situate within the whole document \n"
@@ -94,9 +86,9 @@ class GeminiAugmenter(BaseAugmenter):
             "the overall document for the purposes of improving search retrieval "
             "of the chunk. Answer only with the succinct context and nothing else."
         )
-        return self.augment(chunks, prompt)
+        return await self.augment(doc, chunks, prompt)
 
-    def augment_query(self, chunks: list[str]) -> list[str]:
+    async def augment_query(self, doc: str, chunks: list[str]) -> list[str]:
         """Generate the queries for chunks."""
         prompt = (
             "Here is the chunk we want to ask questions about \n"
@@ -105,16 +97,23 @@ class GeminiAugmenter(BaseAugmenter):
             "for the purposes of improving search retrieval of the chunk. "
             "Answer only with the question and nothing else."
         )
-        return self.augment(chunks, prompt)
+        return await self.augment(doc, chunks, prompt)
 
-    def summarize_doc(self) -> str:
+    async def summarize_doc(self, doc: str) -> str:
         """Summarize the document."""
         prompt = (
             "Summarize the provided document concisely while preserving its key "
             "ideas, main arguments, and essential details. Ensure clarity and "
             "coherence, avoiding unnecessary repetition."
+            f"\n<document>{doc}</document>\n"
         )
-        if self.doc:
-            prompt = f"<document>{self.doc}</document>\n" + prompt
-        response = self.client.generate_content([prompt])
-        return response.text
+        resp = await self.client.post(
+            url=self.url,
+            json={"contents": [{"parts": [{"text": prompt}]}]},
+            params={"key": self.api_key},
+        )
+        if resp.is_error:
+            raise RuntimeError(f"Failed to augment with Gemini: {resp.text}")
+        data = msgspec.json.decode(resp.content)
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return text.strip()

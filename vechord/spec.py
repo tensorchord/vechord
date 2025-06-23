@@ -1,6 +1,7 @@
 import dataclasses
 import enum
 import inspect
+import sys
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from functools import partial
@@ -22,6 +23,11 @@ from typing import (
     runtime_checkable,
 )
 from uuid import UUID
+
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
 
 import msgspec
 import numpy as np
@@ -107,6 +113,24 @@ def create_vector_type(dim: int) -> Type[Vector]:
         def psql_type(cls):
             return "vector"
 
+        @classmethod
+        def __json_schema__(cls) -> dict:
+            return {
+                "title": cls.__name__,
+                "type": "array",
+                "items": {"type": "number", "format": "float"},
+                "minItems": cls._dim,
+                "maxItems": cls._dim,
+            }
+
+        @classmethod
+        def __json_encode__(cls, value: Self) -> list[float]:
+            return value.tolist()
+
+        @classmethod
+        def __json_decode__(cls, value: list[float]) -> Self:
+            return cls(value)
+
     SpecificVector.__name__ = name
     return SpecificVector
 
@@ -170,6 +194,24 @@ class PrimaryKeyAutoIncrease(int):
     def psql_type(cls) -> str:
         return "bigint"
 
+    @classmethod
+    def __json_schema__(cls) -> dict:
+        return {
+            "title": cls.__name__,
+            "type": "integer",
+            "format": "int64",
+        }
+
+    @classmethod
+    def __json_encode__(cls, value: Self) -> int:
+        return int(value)
+
+    @classmethod
+    def __json_decode__(cls, value: int) -> Self:
+        if not isinstance(value, int):
+            raise ValueError(f"expected int, got {type(value)}")
+        return cls(value)
+
 
 class PrimaryKeyUUID(UUID):
     """Primary key with UUID type. (wrap ``UUID``)
@@ -199,6 +241,22 @@ class PrimaryKeyUUID(UUID):
     def factory(cls):
         return uuid7()
 
+    @classmethod
+    def __json_schema__(cls) -> dict:
+        return {
+            "title": cls.__name__,
+            "type": "string",
+            "format": "uuid",
+        }
+
+    @classmethod
+    def __json_encode__(cls, value: Self) -> str:
+        return str(value)
+
+    @classmethod
+    def __json_decode__(cls, value: str) -> Self:
+        return cls(value)
+
 
 class Keyword(str):
     """Keyword type for text search. (wrap ``str``)
@@ -221,6 +279,23 @@ class Keyword(str):
     def with_model(cls, model: Literal["bert_base_uncased", "wiki_tocken"]) -> Type:
         cls._model = model
         return cls
+
+    @classmethod
+    def __json_schema__(cls) -> dict:
+        return {
+            "title": cls.__name__,
+            "type": "string",
+            "format": "keyword",
+            "description": f"Keyword with model {cls._model}",
+        }
+
+    @classmethod
+    def __json_encode__(cls, value: Self) -> str:
+        return str(value)
+
+    @classmethod
+    def __json_decode__(cls, value: str) -> Self:
+        return cls(value)
 
 
 TYPE_TO_PSQL = {
