@@ -22,8 +22,8 @@ pip install vechord
 
 The related Docker images can be found in [VectorChord Suite][vectorchord-suite].
 
-- DockerHub: `tensorchord/vchord-suite:pg17-20250414`
-- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250414`
+- DockerHub: `tensorchord/vchord-suite:pg17-20250620`
+- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250620`
 ## Features
 
 - [x] vector search with [RaBitQ][rabitq] (powered by [VectorChord][vectorchord])
@@ -168,7 +168,7 @@ with make_server("", 8000, app) as server:
 ## Development
 
 ```bash
-docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord-suite:pg17-20250414
+docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord-suite:pg17-20250620
 envd up
 # inside the envd env, sync all the dependencies
 make sync

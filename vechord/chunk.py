@@ -1,12 +1,14 @@
-import json
 import os
 import re
 from abc import ABC, abstractmethod
 
+import httpx
+import msgspec
+
 
 class BaseChunker(ABC):
     @abstractmethod
-    def segment(self, text: str) -> list[str]:
+    async def segment(self, text: str) -> list[str]:
         raise NotImplementedError
 
     @abstractmethod
@@ -42,7 +44,7 @@ class RegexChunker(BaseChunker):
             i -= 1
         return pieces[i + 1 :]
 
-    def segment(self, text: str) -> list[str]:
+    async def segment(self, text: str) -> list[str]:
         chunks: list[str] = []
         previous: list[str] = []
         current: list[str] = []
@@ -95,40 +97,27 @@ class SpacyChunker(BaseChunker):
     def name(self) -> str:
         return f"spacy_chunk_{self.model}"
 
-    def segment(self, text: str) -> list[str]:
+    async def segment(self, text: str) -> list[str]:
         return [sent.text for sent in self.nlp(text).sents]
-
-
-class WordLlamaChunker(BaseChunker):
-    """A semantic chunker based on WordLlama.
-
-    This doesn't guarantee the generated chunks are sentences.
-    """
-
-    def __init__(self, size: int = 1536):
-        from wordllama import WordLlama
-
-        self.model = WordLlama.load()
-        self.size = size
-
-    def name(self) -> str:
-        return f"wordllama_chunk_{self.size}"
-
-    def segment(self, text: str) -> list[str]:
-        return self.model.split(text, target_size=self.size)
 
 
 class GeminiChunker(BaseChunker):
     """A semantic chunker based on Gemini."""
 
-    def __init__(self, model: str = "gemini-2.0-flash", size: int = 1536):
-        key = os.environ.get("GEMINI_API_KEY")
-        if not key:
+    def __init__(self, model: str = "gemini-2.5-flash", size: int = 1536):
+        self.api_key = os.environ.get("GEMINI_API_KEY")
+        if not self.api_key:
             raise ValueError("env GEMINI_API_KEY not set")
 
-        import google.generativeai as genai
-
-        self.model = genai.GenerativeModel(model)
+        self.model = model
+        self.url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.model}:generateContent"
+        )
+        self.client = httpx.AsyncClient(
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(120.0, connect=5.0),
+        )
         self.prompt = f"""
 You are an expert text chunker, skilled at dividing documents into meaningful 
 segments while respecting token limits. Your goal is to break down a document into 
@@ -136,37 +125,52 @@ chunks that are as semantically coherent as possible, ensuring no chunk exceeds 
 specified token length. Maintain document order. The maximum token length is {size}.
 The return format is a list of chunk strings.The document is as follows:
 """
-        self.output_token_limit = 8128
+        self.output_token_limit = 65536
         self.regex_chunker = RegexChunker(
             size=self.output_token_limit,
             overlap=0,
             separator=r"[\n\r\f\v\t?!.;]{1,}",
             concat=" ",
         )
+        self.json_schema = msgspec.json.schema(list[str])
 
     def name(self) -> str:
-        return f"gemini_chunk_{self.model.model_name}"
+        return f"gemini_chunk_{self.model}"
 
-    def segment(self, text: str) -> list[str]:
-        tokens = self.model.count_tokens(text).total_tokens
-        if tokens <= self.output_token_limit:
-            response = self.model.generate_content(
-                contents=self.prompt + f"\n<document> {text} </document>",
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "response_schema": list[str],
-                },
-            )
-            return json.loads(response.text)
+    async def __aenter__(self):
+        return self
 
-        chunks = []
-        for chunk in self.regex_chunker.segment(text):
-            response = self.model.generate_content(
-                contents=self.prompt + f"\n<document> {chunk} </document>",
-                generation_config={
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self.client.aclose()
+
+    async def query(self, prompt: str) -> list[str]:
+        resp = await self.client.post(
+            url=self.url,
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
                     "response_mime_type": "application/json",
-                    "response_schema": list[str],
+                    "response_json_schema": self.json_schema,
                 },
-            )
-            chunks.extend(json.loads(response.text))
+            },
+            params={"key": self.api_key},
+        )
+        if resp.is_error:
+            raise RuntimeError(f"Failed to chunk with Gemini: {resp.text}")
+        data = msgspec.json.decode(resp.content)
+        chunks = msgspec.json.decode(
+            data["candidates"][0]["content"]["parts"][0]["text"], type=list[str]
+        )
         return chunks
+
+    async def segment(self, text: str) -> list[str]:
+        tokens = len(text)
+        if tokens <= self.output_token_limit:
+            chunks = await self.query(self.prompt + f"\n<document> {text} </document>")
+            return chunks
+
+        all_chunks = []
+        for chunk in self.regex_chunker.segment(text):
+            chunks = await self.query(self.prompt + f"\n<document> {chunk} </document>")
+            all_chunks.extend(chunks)
+        return all_chunks

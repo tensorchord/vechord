@@ -1,5 +1,5 @@
 from vechord.augment import GeminiAugmenter
-from vechord.chunk import GeminiChunker, RegexChunker, SpacyChunker, WordLlamaChunker
+from vechord.chunk import GeminiChunker, RegexChunker, SpacyChunker
 from vechord.client import VechordClient
 from vechord.embedding import (
     GeminiDenseEmbedding,
@@ -56,7 +56,6 @@ __all__ = [
     "VechordRegistry",
     "Vector",
     "VectorIndex",
-    "WordLlamaChunker",
     "create_chunk_with_dim",
     "create_web_app",
 ]

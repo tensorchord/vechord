@@ -129,24 +129,30 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
     Gemini also generates the JSON schema from the pydantic model.
     """
 
-    def __init__(self, model: str = "gemini-2.5-flash-preview-05-20"):
+    def __init__(self, model: str = "gemini-2.5-flash"):
         self.model = model
-        self.key = os.environ.get("GEMINI_API_KEY")
-        if not self.key:
+        self.api_key = os.environ.get("GEMINI_API_KEY")
+        if not self.api_key:
             raise ValueError("env GEMINI_API_KEY not set")
 
         self.url = (
-            "https://generativelanguage.googleapis.com/v1alpha/models/"
+            "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model}:generateContent"
         )
-        self.session = httpx.Client(
+        self.client = httpx.AsyncClient(
             headers={"Content-Type": "application/json"},
             timeout=httpx.Timeout(30.0, connect=5.0),
         )
 
-    def query(self, prompt: str, schema: type):
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self.client.aclose()
+
+    async def query(self, prompt: str, schema: type):
         json_schema = msgspec.json.schema(schema)
-        resp = self.session.post(
+        resp = await self.client.post(
             url=self.url,
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
@@ -155,13 +161,13 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
                     "response_json_schema": json_schema,
                 },
             },
-            params={"key": self.key},
+            params={"key": self.api_key},
         )
         if resp.is_error:
-            raise ValueError(f"Failed to query Gemini API: {resp.text}")
+            raise RuntimeError(f"Failed to recognize with Gemini: {resp.text}")
         return resp
 
-    def recognize(self, text) -> list[Entity]:
+    async def recognize(self, text) -> list[Entity]:
         prompt = (
             "Given the text document, identify and extract all the entities, return the JSON "
             "format with the following fields: "
@@ -170,7 +176,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the entity in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = self.query(
+        resp = await self.query(
             prompt=prompt.format(text=text),
             schema=list[Entity],
         )
@@ -180,10 +186,12 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
                 data["candidates"][0]["content"]["parts"][0]["text"], type=list[Entity]
             )
         except (msgspec.DecodeError, KeyError) as err:
-            raise ValueError(f"Failed to decode Gemini response: {err}") from err
+            raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
         return ents
 
-    def recognize_with_relations(self, text) -> tuple[list[Entity], list[Relation]]:
+    async def recognize_with_relations(
+        self, text
+    ) -> tuple[list[Entity], list[Relation]]:
         prompt = (
             "Given the text document, extract entities and the possible relations "
             "between them. Return a list of relations with source and target "
@@ -193,7 +201,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the relation in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = self.query(
+        resp = await self.query(
             prompt=prompt.format(text=text),
             schema=list[Relation],
         )
@@ -204,7 +212,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
                 type=list[Relation],
             )
         except (msgspec.DecodeError, KeyError) as err:
-            raise ValueError(f"Failed to decode Gemini response: {err}") from err
+            raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
         ents: dict[str, Entity] = {}
         for rel in rels:
             ents[rel.source.text] = rel.source
@@ -213,9 +221,15 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
 
 
 if __name__ == "__main__":
-    recognizer = GeminiEntityRecognizer()
-    text = "Barack Obama was the 44th President of the United States. He was born in Hawaii. His wife, Michelle Obama, is a lawyer and writer."
 
-    ents, rels = recognizer.recognize_with_relations(text)
-    print(ents)
-    print(rels)
+    async def main():
+        async with GeminiEntityRecognizer() as recognizer:
+            text = "Barack Obama was the 44th President of the United States. He was born in Hawaii. His wife, Michelle Obama, is a lawyer and writer."
+
+            ents, rels = await recognizer.recognize_with_relations(text)
+            print(ents)
+            print(rels)
+
+    import asyncio
+
+    asyncio.run(main())

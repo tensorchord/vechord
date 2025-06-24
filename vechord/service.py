@@ -1,20 +1,43 @@
-from typing import Optional
+from typing import Any, Optional, TypeVar
 
 import falcon
 import msgspec
 from defspec import OpenAPI, RenderTemplate
-from falcon import App, Request, Response
+from falcon.asgi import App, Request, Response
 
 from vechord.log import logger
 from vechord.registry import Table, VechordPipeline, VechordRegistry
 
+T = TypeVar("T")
+M = TypeVar("M", bound=msgspec.Struct)
 
-def validate_request(spec: type[msgspec.Struct], req: Request, resp: Response):
+
+def vechord_schema_hook(cls: type):
+    if method := getattr(cls, "__json_schema__", None):
+        return method()
+    raise NotImplementedError()
+
+
+def vechord_encode_hook(obj: Any) -> Any:
+    if method := getattr(obj, "__json_encode__", None):
+        return method(obj)
+    raise NotImplementedError()
+
+
+def vechord_decode_hook(obj_type: type[T], data: Any) -> T:
+    if method := getattr(obj_type, "__json_decode__", None):
+        return method(data)
+    raise NotImplementedError()
+
+
+async def validate_request(spec: type[M], req: Request, resp: Response) -> Optional[M]:
     try:
         if req.method == "GET":
             request = msgspec.convert(req.params, spec)
         else:
-            request = msgspec.json.decode(req.stream.read(), type=spec)
+            request = msgspec.json.decode(
+                await req.stream.read(), type=spec, dec_hook=vechord_decode_hook
+            )
     except (msgspec.ValidationError, msgspec.DecodeError) as err:
         logger.info(
             "failed to decode the request '%s' body %s: %s", req.path, spec, err
@@ -26,7 +49,7 @@ def validate_request(spec: type[msgspec.Struct], req: Request, resp: Response):
     return request
 
 
-def uncaught_exception_handler(
+async def uncaught_exception_handler(
     req: Request, resp: Response, exc: Exception, params: dict
 ):
     logger.warning(
@@ -38,7 +61,7 @@ def uncaught_exception_handler(
 
 
 class HealthCheck:
-    def on_get(self, req: Request, resp: Response):
+    async def on_get(self, req: Request, resp: Response):
         resp.status = falcon.HTTP_200
         resp.content_type = falcon.MEDIA_TEXT
         resp.text = "Ok"
@@ -49,44 +72,49 @@ class TableResource:
         self.table_cls = table
         self.registry = registry
 
-    def on_get(self, req: Request, resp: Response):
+    async def on_get(self, req: Request, resp: Response):
         table = self.table_cls.partial_init(**req.params)
-        rows = self.registry.select_by(obj=table)
-        resp.data = msgspec.json.encode(rows)
+        rows = await self.registry.select_by(obj=table)
+        resp.data = msgspec.json.encode(rows, enc_hook=vechord_encode_hook)
 
-    def on_post(self, req: Request, resp: Response):
-        table: Optional[Table] = validate_request(self.table_cls, req, resp)
+    async def on_post(self, req: Request, resp: Response):
+        table = await validate_request(self.table_cls, req, resp)
         if table is None:
             return
 
-        self.registry.insert(table)
-        resp.status = falcon.HTTP_201
+        await self.registry.insert(table)
+        resp.status = falcon.HTTP_CREATED
 
-    def on_delete(self, req: Request, resp: Response):
+    async def on_delete(self, req: Request, resp: Response):
         table = self.table_cls.partial_init(**req.params)
-        self.registry.remove_by(obj=table)
+        await self.registry.remove_by(obj=table)
 
 
 class PipelineResource:
     def __init__(self, pipeline: VechordPipeline):
         self.pipeline = pipeline
-        self.decoder = msgspec.json.Decoder()
+        self.decoder = msgspec.json.Decoder(dec_hook=vechord_decode_hook)
 
-    def on_post(self, req: Request, resp: Response):
+    async def on_post(self, req: Request, resp: Response):
         json = self.decoder.decode(req.stream.read())
         if not isinstance(json, dict):
             raise falcon.HTTPBadRequest(
                 title="Invalid request",
                 description="Request must be a JSON Dict",
             )
-        self.pipeline.run(**json)
+        await self.pipeline.run(**json)
 
 
 class OpenAPIResource:
-    def __init__(self, tables: list[type[Table]]) -> None:
+    def __init__(
+        self, tables: list[type[Table]], include_pipeline: bool = True
+    ) -> None:
         self.openapi = OpenAPI()
         self.openapi.register_route("/", "get", summary="health check")
-        self.openapi.register_route("/api/pipeline", "post", summary="run the pipeline")
+        if include_pipeline:
+            self.openapi.register_route(
+                "/api/pipeline", "post", summary="run the pipeline"
+            )
         for table in tables:
             path = f"/api/table/{table.name()}"
             self.openapi.register_route(
@@ -94,12 +122,14 @@ class OpenAPIResource:
                 "get",
                 "get the table with partial attributes",
                 query_type=table,
+                schema_hook=vechord_schema_hook,
             )
             self.openapi.register_route(
                 path,
                 "delete",
                 "delete table records according to partial attributes",
                 query_type=table,
+                schema_hook=vechord_schema_hook,
             )
             self.openapi.register_route(
                 path,
@@ -107,10 +137,11 @@ class OpenAPIResource:
                 "insert a new record to the table",
                 request_type=table,
                 request_content_type="json",
+                schema_hook=vechord_schema_hook,
             )
         self.spec = self.openapi.to_json()
 
-    def on_get(self, req: Request, resp: Response):
+    async def on_get(self, req: Request, resp: Response):
         resp.content_type = falcon.MEDIA_JSON
         resp.data = self.spec
 
@@ -119,30 +150,35 @@ class OpenAPIRender:
     def __init__(self, spec_url: str, template: RenderTemplate) -> None:
         self.template = template.value.format(spec_url=spec_url)
 
-    def on_get(self, req: Request, resp: Response):
+    async def on_get(self, req: Request, resp: Response):
         resp.content_type = falcon.MEDIA_HTML
         resp.text = self.template
 
 
-def create_web_app(registry: VechordRegistry, pipeline: VechordPipeline) -> App:
-    """Create a `Falcon` WSGI application for the given registry.
+def create_web_app(
+    registry: VechordRegistry, pipeline: Optional[VechordPipeline]
+) -> App:
+    """Create a `Falcon` ASGI application for the given registry.
 
     This includes the:
 
     - health check [GET](/)
     - tables [GET/POST/DELETE](/api/table/{table_name})
-    - pipeline in a transaction [POST](/api/pipeline)
     - OpenAPI spec and Swagger UI [GET](/openapi/swagger)
+    - optional: pipeline in a transaction [POST](/api/pipeline)
     """
-    app = App()
+    app = App(middleware=registry)
     app.add_route("/", HealthCheck())
     for table in registry.tables:
         app.add_route(
             f"/api/table/{table.name()}",
             TableResource(table=table, registry=registry),
         )
-    app.add_route("/api/pipeline", PipelineResource(pipeline=pipeline))
-    app.add_route("/openapi/spec.json", OpenAPIResource(registry.tables))
+    if pipeline is not None:
+        app.add_route("/api/pipeline", PipelineResource(pipeline=pipeline))
+    app.add_route(
+        "/openapi/spec.json", OpenAPIResource(registry.tables, pipeline is not None)
+    )
     app.add_route(
         "/openapi/swagger", OpenAPIRender("/openapi/spec.json", RenderTemplate.SWAGGER)
     )
