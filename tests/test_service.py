@@ -80,3 +80,17 @@ async def test_service_table(client):
     resp = await client.simulate_get("/api/table/defaultdocument")
     assert resp.status_code == HTTPStatus.OK
     assert len(resp.json) == 0
+
+
+@pytest.mark.parametrize("registry", [(DefaultDocument, DefaultChunk)], indirect=True)
+async def test_service_pipeline(client):
+    text = "1 2 3 4 5"
+    resp = await client.simulate_post("/api/pipeline", json={"text": text})
+    assert resp.status_code == HTTPStatus.OK
+
+    resp = await client.simulate_get("/api/table/defaultchunk")
+    assert resp.status_code == HTTPStatus.OK
+    chunks = resp.json
+    assert len(chunks) == len(text.split())
+    for i, chunk in enumerate(chunks):
+        assert chunk["text"] == f"num[{i + 1}]"

@@ -2,6 +2,7 @@ from typing import Any, Optional, TypeVar
 
 import falcon
 import msgspec
+import numpy as np
 from defspec import OpenAPI, RenderTemplate
 from falcon.asgi import App, Request, Response
 
@@ -21,13 +22,19 @@ def vechord_schema_hook(cls: type):
 def vechord_encode_hook(obj: Any) -> Any:
     if method := getattr(obj, "__json_encode__", None):
         return method(obj)
-    raise NotImplementedError()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    raise NotImplementedError(
+        f"Object {obj} does not implement __json_encode__ method."
+    )
 
 
 def vechord_decode_hook(obj_type: type[T], data: Any) -> T:
     if method := getattr(obj_type, "__json_decode__", None):
         return method(data)
-    raise NotImplementedError()
+    raise NotImplementedError(
+        f"Type {obj_type} does not implement __json_decode__ method."
+    )
 
 
 async def validate_request(spec: type[M], req: Request, resp: Response) -> Optional[M]:
@@ -96,7 +103,7 @@ class PipelineResource:
         self.decoder = msgspec.json.Decoder(dec_hook=vechord_decode_hook)
 
     async def on_post(self, req: Request, resp: Response):
-        json = self.decoder.decode(req.stream.read())
+        json = self.decoder.decode(await req.stream.read())
         if not isinstance(json, dict):
             raise falcon.HTTPBadRequest(
                 title="Invalid request",
