@@ -1,7 +1,7 @@
 import csv
 import zipfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Iterator
 from uuid import UUID
 
 import httpx
@@ -18,7 +18,7 @@ BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{
 DEFAULT_DATASET = "scifact"
 TOP_K = 10
 
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 emb = GeminiDenseEmbedding()
 ner = GeminiEntityRecognizer()
 
@@ -88,12 +88,15 @@ class Evaluation(msgspec.Struct):
     recall: float
 
 
-vr = VechordRegistry("graph", "postgresql://postgres:postgres@172.17.0.1:5432/")
-vr.register([Chunk, Query, Entity, Relation])
+vr = VechordRegistry(
+    "graph",
+    "postgresql://postgres:postgres@172.17.0.1:5432/",
+    tables=[Chunk, Query, Entity, Relation],
+)
 
 
 @vr.inject(output=Chunk)
-def load_corpus(dataset: str, output: Path) -> Iterator[Chunk]:
+async def load_corpus(dataset: str, output: Path) -> AsyncIterator[Chunk]:
     file = output / dataset / "corpus.jsonl"
     decoder = msgspec.json.Decoder()
     entities: dict[str, Entity] = {}
@@ -103,18 +106,18 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Chunk]:
             item = decoder.decode(line)
             text = f"{item['title']}\n{item['text']}"
             try:
-                vector = emb.vectorize_chunk(text)
+                vector = await emb.vectorize_chunk(text)
             except Exception as e:
                 print(f"failed to vectorize {text}: {e}")
                 continue
-            ents, rels = ner.recognize_with_relations(text)
+            ents, rels = await ner.recognize_with_relations(text)
             for ent in ents:
                 if ent.text not in entities:
                     entities[ent.text] = Entity(
                         text=ent.text,
                         label=ent.label,
                         vec=DenseVector(
-                            emb.vectorize_chunk(f"{ent.text} {ent.description}")
+                            await emb.vectorize_chunk(f"{ent.text} {ent.description}")
                         ),
                         chunk_uuids=[],
                     )
@@ -126,7 +129,7 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Chunk]:
                         source=entities[rel.source.text].uuid,
                         target=entities[rel.target.text].uuid,
                         text=rel.description,
-                        vec=DenseVector(emb.vectorize_chunk(rel.description)),
+                        vec=DenseVector(await emb.vectorize_chunk(rel.description)),
                     )
 
             chunk = Chunk(
@@ -138,12 +141,12 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Chunk]:
             for ent in ents:
                 entities[ent.text].chunk_uuids.append(chunk.uuid)
             yield chunk
-    vr.copy_bulk(list(entities.values()))
-    vr.copy_bulk(list(relations.values()))
+    await vr.copy_bulk(list(entities.values()))
+    await vr.copy_bulk(list(relations.values()))
 
 
 @vr.inject(output=Query)
-def load_query(dataset: str, output: Path) -> Iterator[Query]:
+async def load_query(dataset: str, output: Path) -> AsyncIterator[Query]:
     file = output / dataset / "queries.jsonl"
     truth = output / dataset / "qrels" / "test.tsv"
 
@@ -166,55 +169,55 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
                 uid=uid,
                 cid=table[uid],
                 text=text,
-                vec=DenseVector(emb.vectorize_query(text)),
+                vec=DenseVector(await emb.vectorize_query(text)),
             )
 
 
-def expand_by_text(text: str) -> list[Chunk]:
-    ents = ner.recognize(text)
+async def expand_by_text(text: str) -> list[Chunk]:
+    ents = await ner.recognize(text)
     chunks = []
     for ent in ents:
-        entity = vr.select_by(Entity.partial_init(text=ent.text))
+        entity = await vr.select_by(Entity.partial_init(text=ent.text))
         if not entity:
             continue
         entity = entity[0]
         chunks.extend(
             res[0]
             for res in [
-                vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
+                await vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
                 for chunk_uuid in entity.chunk_uuids
             ]
         )
     return chunks
 
 
-def expand_by_graph(text: str, topk=3) -> list[Chunk]:
-    ents, rels = ner.recognize_with_relations(text)
+async def expand_by_graph(text: str, topk=3) -> list[Chunk]:
+    ents, rels = await ner.recognize_with_relations(text)
     if not ents:
         return []
     entity_text = " ".join(f"{ent.text} {ent.description}" for ent in ents)
-    similar_ents = vr.search_by_vector(
-        Entity, emb.vectorize_query(entity_text), topk=topk
+    similar_ents = await vr.search_by_vector(
+        Entity, await emb.vectorize_query(entity_text), topk=topk
     )
     ents = set(ent.uuid for ent in similar_ents)
     if rels:
         relation_text = " ".join(rel.description for rel in rels)
-        similar_rels = vr.search_by_vector(
-            Relation, emb.vectorize_query(relation_text), topk=topk
+        similar_rels = await vr.search_by_vector(
+            Relation, await emb.vectorize_query(relation_text), topk=topk
         )
         ents |= set(rel.source for rel in similar_rels) | set(
             rel.target for rel in similar_rels
         )
     chunks = []
     for ent_uuid in ents:
-        res = vr.select_by(Entity.partial_init(uuid=ent_uuid))
+        res = await vr.select_by(Entity.partial_init(uuid=ent_uuid))
         if not res:
             continue
         entity = res[0]
         chunks.extend(
             res[0]
             for res in [
-                vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
+                await vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
                 for chunk_uuid in entity.chunk_uuids
             ]
         )
@@ -222,9 +225,9 @@ def expand_by_graph(text: str, topk=3) -> list[Chunk]:
 
 
 @vr.inject(input=Query)
-def evaluate(cid: str, text: str, vec: DenseVector) -> Evaluation:
-    chunks: list[Chunk] = vr.search_by_vector(Chunk, vec, topk=TOP_K)
-    expands = expand_by_graph(text)
+async def evaluate(cid: str, text: str, vec: DenseVector) -> Evaluation:
+    chunks: list[Chunk] = await vr.search_by_vector(Chunk, vec, topk=TOP_K)
+    expands = await expand_by_graph(text)
     final_chunks = list({chunk.uuid: chunk for chunk in chunks + expands}.values())
     # TODO: rerank
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in final_chunks])
@@ -235,17 +238,17 @@ def evaluate(cid: str, text: str, vec: DenseVector) -> Evaluation:
     )
 
 
-def display_graph(save_to_file: bool = True):
+async def display_graph(save_to_file: bool = True):
     import matplotlib.pyplot as plt
     import networkx as nx
 
     graph = nx.Graph()
-    rels: list[Relation] = vr.select_by(Relation.partial_init())
+    rels: list[Relation] = await vr.select_by(Relation.partial_init())
     ent_table: dict[UUID, Entity] = {}
     for rel in rels:
         for uuid in (rel.source, rel.target):
             if uuid not in ent_table:
-                ent = vr.select_by(Entity.partial_init(uuid=uuid))
+                ent = await vr.select_by(Entity.partial_init(uuid=uuid))
                 if ent:
                     ent_table[uuid] = ent[0]
 
@@ -286,15 +289,22 @@ def display_graph(save_to_file: bool = True):
         plt.show()
 
 
-if __name__ == "__main__":
+async def main():
     save_dir = Path("datasets")
-    download_dataset(DEFAULT_DATASET, save_dir)
+    async with vr, emb, ner:
+        await download_dataset(DEFAULT_DATASET, save_dir)
 
-    load_corpus(DEFAULT_DATASET, save_dir)
-    load_query(DEFAULT_DATASET, save_dir)
+        await load_corpus(DEFAULT_DATASET, save_dir)
+        await load_query(DEFAULT_DATASET, save_dir)
 
-    res: list[Evaluation] = evaluate()
-    print("ndcg", sum(r.ndcg for r in res) / len(res))
-    print("recall@10", sum(r.recall for r in res) / len(res))
+        res: list[Evaluation] = await evaluate()
+        print("ndcg", sum(r.ndcg for r in res) / len(res))
+        print("recall@10", sum(r.recall for r in res) / len(res))
 
-    display_graph()
+        await display_graph()
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())

@@ -1,10 +1,10 @@
+from collections.abc import AsyncIterable, Iterable
 from contextlib import AsyncExitStack
 from functools import wraps
-from inspect import iscoroutinefunction
+from inspect import isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     Callable,
-    Generator,
     Iterator,
     Optional,
     Sequence,
@@ -30,9 +30,7 @@ def is_list_of_type(typ) -> bool:
     origin = get_origin(typ)
     if origin is None:
         return False
-    if origin is list:
-        return True
-    return issubclass(origin, Iterator) or issubclass(origin, Generator)
+    return issubclass(origin, (Iterable, AsyncIterable))
 
 
 class VechordPipeline:
@@ -360,6 +358,9 @@ class VechordRegistry:
     ):
         """Decorator to inject the data for the function arguments & return value.
 
+        This can be applied to both sync & async functions. But the decorated
+        functions will all be async functions.
+
         Args:
             input: the input table to be retrieved from the DB. If not set, the function
                 will require the input to be passed in the function call.
@@ -389,10 +390,17 @@ class VechordRegistry:
                 )
 
             _is_async = iscoroutinefunction(func)
+            _is_async_gen = isasyncgenfunction(func)
 
             async def execute_func(*args, **kwargs):
                 if _is_async:
                     return await func(*args, **kwargs)
+                elif _is_async_gen:
+                    # has to collect all items in an async generator
+                    items = []
+                    async for item in func(*args, **kwargs):
+                        items.append(item)
+                    return items
                 return func(*args, **kwargs)
 
             @wraps(func)

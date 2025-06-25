@@ -13,7 +13,7 @@ type hints. Some advanced configuration can be done by using the {py:class}`typi
 
 ### Vector and Keyword search
 
-- {py:class}`~vechord.spec.Vector`: define a vector column with dimensions, it's recommended to define something like `DenseVector = Vector[768]` and use it in all tables. This accepts `list[float]` or `numpy.ndarray` as the input. For now, it only supports `f32` type.
+- {py:class}`~vechord.spec.Vector`: define a vector column with dimensions, it's recommended to define something like `DenseVector = Vector[3072]` and use it in all tables. This accepts `list[float]` or `numpy.ndarray` as the input. For now, it only supports `f32` type.
   - for multivector, use `list[DenseVector]` as the type hint
 - {py:class}`~vechord.spec.Keyword`: define a keyword column that the `str` will be tokenized and stored as the `bm25vector` type. This accepts `str` as the input.
 
@@ -26,7 +26,7 @@ customize the index configuration by using the {py:class}`typing.Annotated` with
 - {py:class}`~vechord.spec.MultiVectorIndex`: configure the `lists`.
 
 ```python
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 
 class MyTable(Table, kw_only=True):
     uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
@@ -89,30 +89,31 @@ from vechord.extract import SimpleExtractor
 from vechord.embedding import GeminiDenseEmbedding
 from vechord.spec import DefaultDocument, create_chunk_with_dim
 
-DefaultChunk = create_chunk_with_dim(768)
-vr = VechordRegistry(namespace="test", url="postgresql://postgres:postgres@127.0.0.1:5432/")
-vr.register([DefaultDocument, DefaultChunk])
+DefaultChunk = create_chunk_with_dim(3072)
+vr = VechordRegistry(namespace="test", url="postgresql://postgres:postgres@127.0.0.1:5432/", tables=[DefaultDocument, DefaultChunk])
 extractor = SimpleExtractor()
 emb = GeminiDenseEmbedding()
 
 
 @vr.inject(output=DefaultDocument)
-def add_document(url: str) -> DefaultDocument:
-    with httpx.Client() as client:
-        resp = client.get(url)
+async def add_document(url: str) -> DefaultDocument:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
         text = extractor.extract_html(resp.text)
         return DefaultDocument(title=url, text=text)
 
 
 @vr.inject(input=Document, output=DefaultChunk)
-def add_chunk(uid: UUID, text: str) -> list[DefaultChunk]:
+async def add_chunk(uid: UUID, text: str) -> list[DefaultChunk]:
     chunks = text.split("\n")
-    return [DefaultChunk(doc_id=uid, vec=emb.vectorize_chunk(t), text=t) for t in chunks]
+    return [DefaultChunk(doc_id=uid, vec=await emb.vectorize_chunk(t), text=t) for t in chunks]
 
 
-for url in ["https://paulgraham.com/best.html", "https://paulgraham.com/read.html"]:
-    add_document(url)
-add_chunk()
+async def main():
+    async with vr, emb:
+        for url in ["https://paulgraham.com/best.html", "https://paulgraham.com/read.html"]:
+            await add_document(url)
+        await add_chunk()
 ```
 
 ### Select/Insert/Delete
@@ -125,10 +126,10 @@ We also provide some functions to select, insert and delete the data from the da
 - {py:meth}`~vechord.registry.VechordRegistry.remove_by`
 
 ```python
-docs = vr.select_by(DefaultDocument.partial_init())
-vr.insert(DefaultDocument(text="hello world"))
-vr.copy_bulk([DefaultDocument(text="hello world"), DefaultDocument(text="hello vector")])
-vr.remove_by(DefaultDocument.partial_init())
+docs = await vr.select_by(DefaultDocument.partial_init())
+await vr.insert(DefaultDocument(text="hello world"))
+await vr.copy_bulk([DefaultDocument(text="hello world"), DefaultDocument(text="hello vector")])
+await vr.remove_by(DefaultDocument.partial_init())
 ```
 
 ## Transaction
@@ -140,7 +141,7 @@ transaction instead of the whole table. So users can focus on the data processin
 
 ```python
 pipeline = vr.create_pipeline([add_document, add_chunk])
-pipeline.run("https://paulgraham.com/best.html")
+await pipeline.run("https://paulgraham.com/best.html")
 ```
 
 ## Search
@@ -152,7 +153,7 @@ We provide search interface for different types of queries:
 - {py:meth}`~vechord.registry.VechordRegistry.search_by_multivec`
 
 ```python
-vr.search_by_vector(DefaultChunk, emb.vectorize_query("hey"), topk=10)
+await vr.search_by_vector(DefaultChunk, await emb.vectorize_query("hey"), topk=10)
 ```
 
 ## Access the cursor
@@ -160,5 +161,5 @@ vr.search_by_vector(DefaultChunk, emb.vectorize_query("hey"), topk=10)
 If you need to change some settings or use the cursor directly:
 
 ```python
-vr.client.get_cursor().execute("SET vchordrq.probes = 100;")
+await vr.client.get_cursor().execute("SET vchordrq.probes = 100;")
 ```

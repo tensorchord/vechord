@@ -78,7 +78,12 @@ class GeminiAugmenter(BaseAugmenter):
         return res
 
     async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
-        """Generate the contextual chunks."""
+        """Generate the contextual chunks.
+        
+        Args:
+            doc: document text
+            chunks: list of chunks to augment
+        """
         prompt = (
             "Here is the chunk we want to situate within the whole document \n"
             "<chunk>\n{chunk}\n</chunk>\n"
@@ -89,7 +94,12 @@ class GeminiAugmenter(BaseAugmenter):
         return await self.augment(doc, chunks, prompt)
 
     async def augment_query(self, doc: str, chunks: list[str]) -> list[str]:
-        """Generate the queries for chunks."""
+        """Generate the queries for chunks.
+        
+        Args:
+            doc: document text
+            chunks: list of chunks to augment
+        """
         prompt = (
             "Here is the chunk we want to ask questions about \n"
             "<chunk>\n{chunk}\n</chunk>\n"

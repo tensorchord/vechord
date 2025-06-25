@@ -1,4 +1,6 @@
+from collections.abc import AsyncIterator
 from http import HTTPStatus
+from uuid import UUID
 
 import msgspec
 import pytest
@@ -19,17 +21,15 @@ async def fixture_client(registry):
         return DefaultDocument(text=text)
 
     @registry.inject(input=DefaultDocument, output=DefaultChunk)
-    def create_chunk(uid: int, text: str) -> list[DefaultChunk]:
+    async def create_chunk(uid: UUID, text: str) -> AsyncIterator[DefaultChunk]:
         nums = [int(x) for x in text.split()]
-        return [
-            DefaultChunk(
+        for num in nums:
+            yield DefaultChunk(
                 doc_id=uid,
                 text=f"num[{num}]",
                 keyword=Keyword(num),
                 vec=gen_vector(),
             )
-            for num in nums
-        ]
 
     app = create_web_app(registry, registry.create_pipeline([create_doc, create_chunk]))
 
