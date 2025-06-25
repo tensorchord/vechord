@@ -93,7 +93,7 @@ async def load_data(filepath: str):
                         doc_uuid=doc["original_uuid"],
                         index=chunk["original_index"],
                         content=chunk["content"],
-                        vector=emb.vectorize_chunk(chunk["content"]),
+                        vector=await emb.vectorize_chunk(chunk["content"]),
                         keyword=Keyword(chunk["content"]),
                     )
                 )
@@ -183,7 +183,9 @@ async def hybrid_search_rerank(query: Query, topk: int, boost=3) -> list[Chunk]:
     keys = await keyword_search(query, topk * boost)
     chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
     async with CohereReranker() as ranker:
-        indices = ranker.rerank(query.content, [chunk.content for chunk in chunks])
+        indices = await ranker.rerank(
+            query.content, [chunk.content for chunk in chunks]
+        )
         return [chunks[i] for i in indices[:topk]]
 
 
@@ -194,7 +196,7 @@ async def hybrid_contextual_search_rerank(
     keys = await keyword_contextual_search(query, topk * boost)
     chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
     async with CohereReranker() as ranker:
-        indices = ranker.rerank(
+        indices = await ranker.rerank(
             query.content, [f"{chunk.content}\n{chunk.context}" for chunk in chunks]
         )
         return [chunks[i] for i in indices[:topk]]

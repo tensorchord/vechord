@@ -59,7 +59,9 @@ def load_document(title: str) -> Document:
 async def chunk_document(uid: int, text: str) -> list[Chunk]:
     chunks = await chunker.segment(text)
     return [
-        Chunk(doc_id=uid, text=chunk, vector=DenseVector(emb.vectorize_chunk(chunk)))
+        Chunk(
+            doc_id=uid, text=chunk, vector=DenseVector(await emb.vectorize_chunk(chunk))
+        )
         for chunk in chunks
     ]
 

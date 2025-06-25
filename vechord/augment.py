@@ -79,7 +79,7 @@ class GeminiAugmenter(BaseAugmenter):
 
     async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
         """Generate the contextual chunks.
-        
+
         Args:
             doc: document text
             chunks: list of chunks to augment
@@ -95,7 +95,7 @@ class GeminiAugmenter(BaseAugmenter):
 
     async def augment_query(self, doc: str, chunks: list[str]) -> list[str]:
         """Generate the queries for chunks.
-        
+
         Args:
             doc: document text
             chunks: list of chunks to augment

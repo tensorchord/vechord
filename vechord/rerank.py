@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
+from typing import TypeVar
 
 from vechord.spec import Table
+
+T = TypeVar("T", bound=Table)
 
 
 class BaseReranker(ABC):
@@ -47,7 +50,7 @@ class ReciprocalRankFusion:
     def get_score(self, rank: int) -> float:
         return 1 / (self.k + rank)
 
-    def fuse(self, retrieved_chunks: list[list[Table]]) -> list[Table]:
+    def fuse(self, retrieved_chunks: list[list[T]]) -> list[T]:
         chunk_score: dict[str, float] = defaultdict(float)
         chunk_map: dict[str, Table] = {}
         for chunks in retrieved_chunks:

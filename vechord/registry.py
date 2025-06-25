@@ -5,7 +5,6 @@ from inspect import isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     Callable,
-    Iterator,
     Optional,
     Sequence,
     TypeVar,
@@ -21,7 +20,7 @@ from vechord.client import (
     select_transaction_buffer,
 )
 from vechord.log import logger
-from vechord.spec import Table
+from vechord.spec import Table, Vector
 
 T = TypeVar("T", bound=Table)
 
@@ -84,7 +83,7 @@ class VechordRegistry:
         namespace: str,
         url: str,
         *,
-        tables: Iterator[type[Table]] = (),
+        tables: Iterable[type[Table]] = (),
         create_index: bool = True,
     ):
         self.ns = namespace
@@ -193,7 +192,7 @@ class VechordRegistry:
     async def search_by_vector(
         self,
         cls: type[T],
-        vec: np.ndarray,
+        vec: np.ndarray | Vector,
         topk: int = 10,
         return_fields: Optional[Sequence[str]] = None,
         probe: Optional[int] = None,
