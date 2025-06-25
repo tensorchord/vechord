@@ -23,9 +23,8 @@ from vechord.spec import (
     Vector,
 )
 
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 emb = GeminiDenseEmbedding()
-vr = VechordRegistry("anthropic", "postgresql://postgres:postgres@172.17.0.1:5432/")
 
 
 class Document(Table, kw_only=True):
@@ -62,7 +61,11 @@ class Query(Table, kw_only=True):
     vector: DenseVector
 
 
-vr.register([Document, Chunk, ContextualChunk, Query])
+vr = VechordRegistry(
+    "anthropic",
+    "postgresql://postgres:postgres@172.17.0.1:5432/",
+    tables=[Document, Chunk, ContextualChunk, Query],
+)
 
 
 def download_data(url: str, save_path: str):
@@ -74,56 +77,56 @@ def download_data(url: str, save_path: str):
             f.write(chunk)
 
 
-def load_data(filepath: str):
+async def load_data(filepath: str):
     with open(filepath, "r", encoding="utf-8") as f:
         docs = json.load(f)
         for doc in docs:
-            vr.insert(
+            await vr.insert(
                 Document(
                     uuid=doc["original_uuid"],
                     content=doc["content"],
                 )
             )
             for chunk in doc["chunks"]:
-                vr.insert(
+                await vr.insert(
                     Chunk(
                         doc_uuid=doc["original_uuid"],
                         index=chunk["original_index"],
                         content=chunk["content"],
-                        vector=emb.vectorize_chunk(chunk["content"]),
+                        vector=await emb.vectorize_chunk(chunk["content"]),
                         keyword=Keyword(chunk["content"]),
                     )
                 )
 
 
-def load_contextual_chunks(filepath: str):
-    augmenter = GeminiAugmenter()
-
-    with open(filepath, "r", encoding="utf-8") as f:
-        docs = json.load(f)
-        for doc in docs:
-            augmenter.reset(doc["content"])
-            chunks = doc["chunks"]
-            augments = augmenter.augment_context([chunk["content"] for chunk in chunks])
-            if len(augments) != len(chunks):
-                print(
-                    f"augments length not match for uuid: {doc['original_uuid']}, {len(augments)} != {len(chunks)}"
+async def load_contextual_chunks(filepath: str):
+    async with GeminiAugmenter() as augmenter:
+        with open(filepath, "r", encoding="utf-8") as f:
+            docs = json.load(f)
+            for doc in docs:
+                chunks = doc["chunks"]
+                augments = await augmenter.augment_context(
+                    doc["content"], [chunk["content"] for chunk in chunks]
                 )
-            for chunk, context in zip(chunks, augments, strict=False):
-                contextual_content = f"{chunk['content']}\n\n{context}"
-                vr.insert(
-                    ContextualChunk(
-                        doc_uuid=doc["original_uuid"],
-                        index=chunk["original_index"],
-                        content=chunk["content"],
-                        context=context,
-                        vector=emb.vectorize_chunk(contextual_content),
-                        keyword=Keyword(contextual_content),
+                if len(augments) != len(chunks):
+                    print(
+                        f"augments length not match for uuid: {doc['original_uuid']}, {len(augments)} != {len(chunks)}"
                     )
-                )
+                for chunk, context in zip(chunks, augments, strict=False):
+                    contextual_content = f"{chunk['content']}\n\n{context}"
+                    await vr.insert(
+                        ContextualChunk(
+                            doc_uuid=doc["original_uuid"],
+                            index=chunk["original_index"],
+                            content=chunk["content"],
+                            context=context,
+                            vector=await emb.vectorize_chunk(contextual_content),
+                            keyword=Keyword(contextual_content),
+                        )
+                    )
 
 
-def load_query(filepath: str):
+async def load_query(filepath: str):
     queries = []
     with open(filepath, "r", encoding="utf-8") as f:
         for line in f:
@@ -134,65 +137,74 @@ def load_query(filepath: str):
                     answer=query["answer"],
                     doc_uuids=[x[0] for x in query["golden_chunk_uuids"]],
                     chunk_index=[x[1] for x in query["golden_chunk_uuids"]],
-                    vector=emb.vectorize_query(query["query"]),
+                    vector=await emb.vectorize_query(query["query"]),
                 )
             )
-    vr.copy_bulk(queries)
+    await vr.copy_bulk(queries)
 
 
-def vector_search(query: Query, topk: int) -> list[Chunk]:
-    return vr.search_by_vector(Chunk, query.vector, topk=topk)
+async def vector_search(query: Query, topk: int) -> list[Chunk]:
+    return await vr.search_by_vector(Chunk, query.vector, topk=topk)
 
 
-def vector_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
-    return vr.search_by_vector(ContextualChunk, query.vector, topk=topk)
+async def vector_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
+    return await vr.search_by_vector(ContextualChunk, query.vector, topk=topk)
 
 
-def keyword_search(query: Query, topk: int) -> list[Chunk]:
-    return vr.search_by_keyword(Chunk, query.content, topk=topk)
+async def keyword_search(query: Query, topk: int) -> list[Chunk]:
+    return await vr.search_by_keyword(Chunk, query.content, topk=topk)
 
 
-def keyword_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
-    return vr.search_by_keyword(ContextualChunk, query.content, topk=topk)
+async def keyword_contextual_search(query: Query, topk: int) -> list[ContextualChunk]:
+    return await vr.search_by_keyword(ContextualChunk, query.content, topk=topk)
 
 
-def hybrid_search_fuse(query: Query, topk: int) -> list[Chunk]:
-    rrf = ReciprocalRankFusion()
-    return rrf.fuse([vector_search(query, topk), keyword_search(query, topk)])[:topk]
-
-
-def hybrid_contextual_search_fuse(query: Query, topk: int) -> list[ContextualChunk]:
+async def hybrid_search_fuse(query: Query, topk: int) -> list[Chunk]:
     rrf = ReciprocalRankFusion()
     return rrf.fuse(
-        [vector_contextual_search(query, topk), keyword_contextual_search(query, topk)]
+        [await vector_search(query, topk), await keyword_search(query, topk)]
     )[:topk]
 
 
-def hybrid_search_rerank(query: Query, topk: int, boost=3) -> list[Chunk]:
-    ranker = CohereReranker()
-    vecs = vector_search(query, topk * boost)
-    keys = keyword_search(query, topk * boost)
+async def hybrid_contextual_search_fuse(
+    query: Query, topk: int
+) -> list[ContextualChunk]:
+    rrf = ReciprocalRankFusion()
+    return rrf.fuse(
+        [
+            await vector_contextual_search(query, topk),
+            await keyword_contextual_search(query, topk),
+        ]
+    )[:topk]
+
+
+async def hybrid_search_rerank(query: Query, topk: int, boost=3) -> list[Chunk]:
+    vecs = await vector_search(query, topk * boost)
+    keys = await keyword_search(query, topk * boost)
     chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
-    indices = ranker.rerank(query.content, [chunk.content for chunk in chunks])
-    return [chunks[i] for i in indices[:topk]]
+    async with CohereReranker() as ranker:
+        indices = await ranker.rerank(
+            query.content, [chunk.content for chunk in chunks]
+        )
+        return [chunks[i] for i in indices[:topk]]
 
 
-def hybrid_contextual_search_rerank(
+async def hybrid_contextual_search_rerank(
     query: Query, topk: int, boost=3
 ) -> list[ContextualChunk]:
-    ranker = CohereReranker()
-    vecs = vector_contextual_search(query, topk * boost)
-    keys = keyword_contextual_search(query, topk * boost)
+    vecs = await vector_contextual_search(query, topk * boost)
+    keys = await keyword_contextual_search(query, topk * boost)
     chunks = list({chunk.uid: chunk for chunk in vecs + keys}.values())
-    indices = ranker.rerank(
-        query.content, [f"{chunk.content}\n{chunk.context}" for chunk in chunks]
-    )
-    return [chunks[i] for i in indices[:topk]]
+    async with CohereReranker() as ranker:
+        indices = await ranker.rerank(
+            query.content, [f"{chunk.content}\n{chunk.context}" for chunk in chunks]
+        )
+        return [chunks[i] for i in indices[:topk]]
 
 
-def evaluate(topk=5, search_func=vector_search):
+async def evaluate(topk=5, search_func=vector_search):
     print(f"TopK={topk}, search by: {search_func.__name__}")
-    queries: list[Query] = vr.select_by(Query.partial_init())
+    queries: list[Query] = await vr.select_by(Query.partial_init())
     total_score = 0
     start = perf_counter()
     for query in queries:
@@ -213,27 +225,35 @@ def evaluate(topk=5, search_func=vector_search):
     )
 
 
-if __name__ == "__main__":
-    Path("datasets").mkdir(parents=True, exist_ok=True)
+async def main(data_path: str):
+    dir = Path(data_path)
+    dir.mkdir(parents=True, exist_ok=True)
     download_data(
         "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/codebase_chunks.json",
-        "datasets/codebase_chunks.json",
+        dir / "codebase_chunks.json",
     )
     download_data(
         "https://raw.githubusercontent.com/anthropics/anthropic-cookbook/refs/heads/main/skills/contextual-embeddings/data/evaluation_set.jsonl",
-        "datasets/evaluation_set.jsonl",
+        dir / "evaluation_set.jsonl",
     )
-    load_data("datasets/codebase_chunks.json")
-    load_query("datasets/evaluation_set.jsonl")
-    load_contextual_chunks("datasets/codebase_chunks.json")
+    async with vr, emb:
+        await load_data(dir / "codebase_chunks.json")
+        await load_query(dir / "evaluation_set.jsonl")
+        await load_contextual_chunks(dir / "codebase_chunks.json")
 
-    for topk in [5, 10]:
-        print("=" * 50)
-        evaluate(topk=topk, search_func=vector_search)
-        evaluate(topk=topk, search_func=keyword_search)
-        evaluate(topk=topk, search_func=hybrid_search_fuse)
-        evaluate(topk=topk, search_func=hybrid_search_rerank)
-        evaluate(topk=topk, search_func=vector_contextual_search)
-        evaluate(topk=topk, search_func=keyword_contextual_search)
-        evaluate(topk=topk, search_func=hybrid_contextual_search_fuse)
-        evaluate(topk=topk, search_func=hybrid_contextual_search_rerank)
+        for topk in [5, 10]:
+            print("=" * 50)
+            await evaluate(topk=topk, search_func=vector_search)
+            await evaluate(topk=topk, search_func=keyword_search)
+            await evaluate(topk=topk, search_func=hybrid_search_fuse)
+            await evaluate(topk=topk, search_func=hybrid_search_rerank)
+            await evaluate(topk=topk, search_func=vector_contextual_search)
+            await evaluate(topk=topk, search_func=keyword_contextual_search)
+            await evaluate(topk=topk, search_func=hybrid_contextual_search_fuse)
+            await evaluate(topk=topk, search_func=hybrid_contextual_search_rerank)
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main("datasets"))

@@ -11,12 +11,6 @@
 :relative-images:
 ```
 
-## Installation
-
-```sh
-pip install vechord
-```
-
 ```{toctree}
 ---
 hidden:

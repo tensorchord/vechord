@@ -4,6 +4,7 @@ from typing import Annotated
 
 import httpx
 import msgspec
+import uvicorn
 
 from vechord.chunk import RegexChunker
 from vechord.embedding import GeminiDenseEmbedding
@@ -18,7 +19,7 @@ from vechord.spec import (
 )
 
 URL = "https://paulgraham.com/{}.html"
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 emb = GeminiDenseEmbedding()
 chunker = RegexChunker(size=1024, overlap=0)
 extractor = SimpleExtractor()
@@ -40,8 +41,9 @@ class Chunk(Table, kw_only=True):
     vector: DenseVector
 
 
-vr = VechordRegistry("http", "postgresql://postgres:postgres@172.17.0.1:5432/")
-vr.register([Document, Chunk])
+vr = VechordRegistry(
+    "http", "postgresql://postgres:postgres@172.17.0.1:5432/", tables=[Document, Chunk]
+)
 
 
 @vr.inject(output=Document)
@@ -54,10 +56,12 @@ def load_document(title: str) -> Document:
 
 
 @vr.inject(input=Document, output=Chunk)
-def chunk_document(uid: int, text: str) -> list[Chunk]:
-    chunks = chunker.segment(text)
+async def chunk_document(uid: int, text: str) -> list[Chunk]:
+    chunks = await chunker.segment(text)
     return [
-        Chunk(doc_id=uid, text=chunk, vector=DenseVector(emb.vectorize_chunk(chunk)))
+        Chunk(
+            doc_id=uid, text=chunk, vector=DenseVector(await emb.vectorize_chunk(chunk))
+        )
         for chunk in chunks
     ]
 
@@ -67,7 +71,4 @@ if __name__ == "__main__":
     pipeline = vr.create_pipeline([load_document, chunk_document])
     app = create_web_app(vr, pipeline)
 
-    from wsgiref.simple_server import make_server
-
-    with make_server("", 8000, app) as server:
-        server.serve_forever()
+    uvicorn.run(app)

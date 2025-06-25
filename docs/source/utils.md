@@ -6,7 +6,7 @@ internal tools. You can use whatever you like.
 You may need to install with extras:
 
 ```bash
-pip install vechord[gemini,openai,spacy,cohere]
+pip install vechord[openai,spacy,cohere]
 ```
 
 - Augment

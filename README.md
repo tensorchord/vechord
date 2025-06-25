@@ -62,8 +62,8 @@ For more details, check our [API reference][document-api] and [User Guide][docum
 from typing import Annotated, Optional
 from vechord.spec import Table, Vector, PrimaryKeyAutoIncrease, ForeignKey
 
-# use 768 dimension vector
-DenseVector = Vector[768]
+# use 3072 dimension vector
+DenseVector = Vector[3072]
 
 class Document(Table, kw_only=True):
     uid: Optional[PrimaryKeyAutoIncrease] = None  # auto-increase id, no need to set
@@ -85,32 +85,35 @@ from vechord.registry import VechordRegistry
 from vechord.extract import SimpleExtractor
 from vechord.embedding import GeminiDenseEmbedding
 
-vr = VechordRegistry(namespace="test", url="postgresql://postgres:postgres@127.0.0.1:5432/")
-# ensure the table and index are created if not exists
-vr.register([Document, Chunk])
+vr = VechordRegistry(namespace="test", url="postgresql://postgres:postgres@127.0.0.1:5432/", tables=[Document, Chunk])
 extractor = SimpleExtractor()
 emb = GeminiDenseEmbedding()
 
 @vr.inject(output=Document)  # dump to the `Document` table
 # function parameters are free to define since `inject(input=...)` is not set
-def add_document(url: str) -> Document:  # the return type is `Document`
-    with httpx.Client() as client:
-        resp = client.get(url)
+async def add_document(url: str) -> Document:  # the return type is `Document`
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url)
         text = extractor.extract_html(resp.text)
         return Document(link=url, text=text)
 
 @vr.inject(input=Document, output=Chunk)  # load from the `Document` table and dump to the `Chunk` table
 # function parameters are the attributes of the `Document` table, only defined attributes
 # will be loaded from the `Document` table
-def add_chunk(uid: int, text: str) -> list[Chunk]:  # the return type is `list[Chunk]`
+async def add_chunk(uid: int, text: str) -> list[Chunk]:  # the return type is `list[Chunk]`
     chunks = text.split("\n")
-    return [Chunk(doc_id=uid, vector=emb.vectorize_chunk(t), text=t) for t in chunks]
+    return [Chunk(doc_id=uid, vector=await emb.vectorize_chunk(t), text=t) for t in chunks]
+
+async def main():
+    async with vr, emb:  # handle the connection with context manager
+        await add_document("https://paulgraham.com/best.html")  # add arguments as usual
+        await add_chunk()  # omit the arguments since the `input` is will be loaded from the `Document` table
+        await vr.insert(Document(text="hello world"))  # insert manually
+        print(await vr.select_by(Document.partial_init()))  # select all the columns from table `Document`
 
 if __name__ == "__main__":
-    add_document("https://paulgraham.com/best.html")  # add arguments as usual
-    add_chunk()  # omit the arguments since the `input` is will be loaded from the `Document` table
-    vr.insert(Document(text="hello world"))  # insert manually
-    print(vr.select_by(Document.partial_init()))  # select all the columns from table `Document`
+    import asyncio
+    asyncio.run(main())
 ```
 
 ### Transaction
@@ -124,13 +127,13 @@ which part of data has not been processed yet.
 
 ```python
 pipeline = vr.create_pipeline([add_document, add_chunk])
-pipeline.run("https://paulgraham.com/best.html")  # only accept the arguments for the first function
+await pipeline.run("https://paulgraham.com/best.html")  # only accept the arguments for the first function
 ```
 
 ### Search
 
 ```python
-print(vr.search_by_vector(Chunk, emb.vectorize_query("startup")))
+print(await vr.search_by_vector(Chunk, await emb.vectorize_query("startup")))
 ```
 
 ### Customized Index Configuration
@@ -147,7 +150,7 @@ class Chunk(Table, kw_only=True):
 ### Access the underlying database cursor directly
 
 ```python
-vr.client.get_cursor().execute("SET vchordrq.probes = 100;")
+await vr.client.get_cursor().execute("SET vchordrq.probes = 100;")
 ```
 
 ### HTTP Service
@@ -157,12 +160,9 @@ This creates a WSGI application that can be served by any WSGI server.
 Open the [OpenAPI Endpoint](http://127.0.0.1:8000/openapi/swagger) to check the API documentation.
 
 ```python
-from vechord.service import create_web_app
-from wsgiref.simple_server import make_server
+import uvicorn
 
-app = create_web_app(vr)
-with make_server("", 8000, app) as server:
-    server.serve_forever()
+uvicorn.run(create_web_app(vr))
 ```
 
 ## Development

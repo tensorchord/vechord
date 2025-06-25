@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Annotated, Optional
 
+from rich import print
+
 from vechord import (
     GeminiAugmenter,
     GeminiDenseEmbedding,
@@ -18,7 +20,7 @@ from vechord.spec import (
 )
 
 emb = GeminiDenseEmbedding()
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 extractor = SimpleExtractor()
 
 
@@ -44,8 +46,11 @@ class ContextChunk(Table, kw_only=True):
     vector: DenseVector
 
 
-vr = VechordRegistry("decorator", "postgresql://postgres:postgres@172.17.0.1:5432/")
-vr.register([Document, Chunk, ContextChunk])
+vr = VechordRegistry(
+    "decorator",
+    "postgresql://postgres:postgres@172.17.0.1:5432/",
+    tables=[Document, Chunk, ContextChunk],
+)
 
 
 @vr.inject(output=Document)
@@ -63,40 +68,39 @@ def load_from_dir(dirpath: str) -> list[Document]:
 
 
 @vr.inject(input=Document, output=Chunk)
-def split_document(uid: int, text: str) -> list[Chunk]:
+async def split_document(uid: int, text: str) -> list[Chunk]:
     chunker = RegexChunker(overlap=0)
-    chunks = chunker.segment(text)
+    chunks = await chunker.segment(text)
     return [
         Chunk(
             doc_uid=uid,
             seq_id=i,
             text=chunk,
-            vector=DenseVector(emb.vectorize_chunk(chunk)),
+            vector=DenseVector(await emb.vectorize_chunk(chunk)),
         )
         for i, chunk in enumerate(chunks)
     ]
 
 
 @vr.inject(input=Document, output=ContextChunk)
-def context_embedding(uid: int, text: str) -> list[ContextChunk]:
-    chunks: list[Chunk] = vr.select_by(
+async def context_embedding(uid: int, text: str) -> list[ContextChunk]:
+    chunks: list[Chunk] = await vr.select_by(
         Chunk.partial_init(doc_uid=uid), fields=["uid", "text"]
     )
-    augmentor = GeminiAugmenter()
-    augmentor.reset(text)
-    context_chunks = [
-        f"{context}\n{origin}"
-        for (context, origin) in zip(
-            augmentor.augment_context([c.text for c in chunks]),
-            [c.text for c in chunks],
-            strict=False,
-        )
-    ]
+    async with GeminiAugmenter() as augmentor:
+        context_chunks = [
+            f"{context}\n{origin}"
+            for (context, origin) in zip(
+                augmentor.augment_context(text, [c.text for c in chunks]),
+                [c.text for c in chunks],
+                strict=False,
+            )
+        ]
     return [
         ContextChunk(
             chunk_uid=chunk_uid,
             text=augmented,
-            vector=DenseVector(emb.vectorize_chunk(augmented)),
+            vector=DenseVector(await emb.vectorize_chunk(augmented)),
         )
         for (chunk_uid, augmented) in zip(
             [c.uid for c in chunks], context_chunks, strict=False
@@ -104,19 +108,15 @@ def context_embedding(uid: int, text: str) -> list[ContextChunk]:
     ]
 
 
-def query_chunk(query: str) -> list[Chunk]:
-    vector = emb.vectorize_query(query)
-    res: list[Chunk] = vr.search_by_vector(
-        Chunk,
-        vector,
-        topk=5,
-    )
+async def query_chunk(query: str) -> list[Chunk]:
+    vector = await emb.vectorize_query(query)
+    res: list[Chunk] = await vr.search_by_vector(Chunk, vector, topk=5)
     return res
 
 
-def query_context_chunk(query: str) -> list[ContextChunk]:
-    vector = emb.vectorize_query(query)
-    res: list[ContextChunk] = vr.search_by_vector(
+async def query_context_chunk(query: str) -> list[ContextChunk]:
+    vector = await emb.vectorize_query(query)
+    res: list[ContextChunk] = await vr.search_by_vector(
         ContextChunk,
         vector,
         topk=5,
@@ -125,29 +125,34 @@ def query_context_chunk(query: str) -> list[ContextChunk]:
 
 
 @vr.inject(input=Chunk)
-def evaluate(uid: int, doc_uid: int, text: str):
-    evaluator = GeminiEvaluator()
-    doc: Document = vr.select_by(Document.partial_init(uid=doc_uid))[0]
-    query = evaluator.produce_query(doc.text, text)
-    retrieved = query_chunk(query)
-    score = evaluator.evaluate_one(str(uid), [str(r.uid) for r in retrieved])
+async def evaluate(uid: int, doc_uid: int, text: str):
+    async with GeminiEvaluator() as evaluator:
+        doc = (await vr.select_by(Document.partial_init(uid=doc_uid)))[0]
+        query = await evaluator.produce_query(doc.text, text)
+        retrieved = await query_chunk(query)
+        score = evaluator.evaluate_one(str(uid), [str(r.uid) for r in retrieved])
     return score
 
 
+async def main():
+    async with vr, emb:
+        await load_from_dir("./data")
+        await split_document()
+        await context_embedding()
+
+        chunks = await query_chunk("vector search")
+        print(chunks)
+
+        scores = await evaluate()
+        print(sum(scores) / len(scores))
+
+        context_chunks = await query_context_chunk("vector search")
+        print(context_chunks)
+
+        await vr.clear_storage()
+
+
 if __name__ == "__main__":
-    from rich import print
+    import asyncio
 
-    load_from_dir("./data")
-    split_document()
-    context_embedding()
-
-    chunks = query_chunk("vector search")
-    print(chunks)
-
-    scores = evaluate()
-    print(sum(scores) / len(scores))
-
-    context_chunks = query_context_chunk("vector search")
-    print(context_chunks)
-
-    vr.clear_storage()
+    asyncio.run(main())

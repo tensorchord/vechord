@@ -1,12 +1,16 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from contextlib import AsyncExitStack
+from typing import TypeVar
 
 from vechord.spec import Table
+
+T = TypeVar("T", bound=Table)
 
 
 class BaseReranker(ABC):
     @abstractmethod
-    def rerank(self, query: str, chunks: list[str]) -> list[int]:
+    async def rerank(self, query: str, chunks: list[str]) -> list[int]:
         """Return the indices of the reranked chunks."""
         raise NotImplementedError
 
@@ -17,11 +21,19 @@ class CohereReranker(BaseReranker):
     def __init__(self, model: str = "rerank-v3.5"):
         import cohere
 
-        self.client = cohere.ClientV2()
+        self.client = cohere.AsyncClientV2()
         self.model = model
 
-    def rerank(self, query: str, chunks: list[str]) -> list[int]:
-        resp = self.client.rerank(
+    async def __aenter__(self):
+        self._async_exit_stack = AsyncExitStack()
+        await self._async_exit_stack.enter_async_context(self.client)
+        return self
+
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self._async_exit_stack.aclose()
+
+    async def rerank(self, query: str, chunks: list[str]) -> list[int]:
+        resp = await self.client.rerank(
             model=self.model,
             query=query,
             documents=chunks,
@@ -38,7 +50,7 @@ class ReciprocalRankFusion:
     def get_score(self, rank: int) -> float:
         return 1 / (self.k + rank)
 
-    def fuse(self, retrieved_chunks: list[list[Table]]) -> list[Table]:
+    def fuse(self, retrieved_chunks: list[list[T]]) -> list[T]:
         chunk_score: dict[str, float] = defaultdict(float)
         chunk_map: dict[str, Table] = {}
         for chunks in retrieved_chunks:

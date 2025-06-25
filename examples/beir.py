@@ -1,7 +1,7 @@
 import csv
 import zipfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Iterator
 
 import httpx
 import msgspec
@@ -17,7 +17,7 @@ DEFAULT_DATASET = "scifact"
 TOP_K = 10
 
 emb = GeminiDenseEmbedding()
-DenseVector = Vector[768]
+DenseVector = Vector[3072]
 
 
 def download_dataset(dataset: str, output: Path):
@@ -68,12 +68,15 @@ class Evaluation(msgspec.Struct):
     recall: float
 
 
-vr = VechordRegistry(DEFAULT_DATASET, "postgresql://postgres:postgres@172.17.0.1:5432/")
-vr.register([Corpus, Query])
+vr = VechordRegistry(
+    DEFAULT_DATASET,
+    "postgresql://postgres:postgres@172.17.0.1:5432/",
+    tables=[Corpus, Query],
+)
 
 
 @vr.inject(output=Corpus)
-def load_corpus(dataset: str, output: Path) -> Iterator[Corpus]:
+async def load_corpus(dataset: str, output: Path) -> AsyncIterator[Corpus]:
     file = output / dataset / "corpus.jsonl"
     decoder = msgspec.json.Decoder()
     with file.open("r") as f:
@@ -82,7 +85,7 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Corpus]:
             title = item.get("title", "")
             text = item.get("text", "")
             try:
-                vector = emb.vectorize_chunk(f"{title}\n{text}")
+                vector = await emb.vectorize_chunk(f"{title}\n{text}")
             except Exception as e:
                 print(f"failed to vectorize {title}: {e}")
                 continue
@@ -95,7 +98,7 @@ def load_corpus(dataset: str, output: Path) -> Iterator[Corpus]:
 
 
 @vr.inject(output=Query)
-def load_query(dataset: str, output: Path) -> Iterator[Query]:
+async def load_query(dataset: str, output: Path) -> AsyncIterator[Query]:
     file = output / dataset / "queries.jsonl"
     truth = output / dataset / "qrels" / "test.tsv"
 
@@ -118,13 +121,13 @@ def load_query(dataset: str, output: Path) -> Iterator[Query]:
                 uid=uid,
                 cid=table[uid],
                 text=text,
-                vector=DenseVector(emb.vectorize_query(text)),
+                vector=DenseVector(await emb.vectorize_query(text)),
             )
 
 
 @vr.inject(input=Query)
-def evaluate(cid: str, vector: DenseVector) -> Evaluation:
-    docs: list[Corpus] = vr.search_by_vector(Corpus, vector, topk=TOP_K)
+async def evaluate(cid: str, vector: DenseVector) -> Evaluation:
+    docs = await vr.search_by_vector(Corpus, vector, topk=TOP_K)
     score = BaseEvaluator.evaluate_one(cid, [doc.uid for doc in docs])
     return Evaluation(
         map=score.get("map"),
@@ -133,13 +136,20 @@ def evaluate(cid: str, vector: DenseVector) -> Evaluation:
     )
 
 
-if __name__ == "__main__":
+async def main():
     save_dir = Path("datasets")
     download_dataset(DEFAULT_DATASET, save_dir)
 
-    load_corpus(DEFAULT_DATASET, save_dir)
-    load_query(DEFAULT_DATASET, save_dir)
+    async with vr, emb:
+        await load_corpus(DEFAULT_DATASET, save_dir)
+        await load_query(DEFAULT_DATASET, save_dir)
 
-    res: list[Evaluation] = evaluate()
-    print("ndcg", sum(r.ndcg for r in res) / len(res))
-    print("recall@10", sum(r.recall for r in res) / len(res))
+        res: list[Evaluation] = await evaluate()
+        print("ndcg", sum(r.ndcg for r in res) / len(res))
+        print("recall@10", sum(r.recall for r in res) / len(res))
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    asyncio.run(main())

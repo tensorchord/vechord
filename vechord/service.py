@@ -163,7 +163,7 @@ class OpenAPIRender:
 
 
 def create_web_app(
-    registry: VechordRegistry, pipeline: Optional[VechordPipeline]
+    registry: VechordRegistry, pipeline: Optional[VechordPipeline] = None
 ) -> App:
     """Create a `Falcon` ASGI application for the given registry.
 
@@ -175,6 +175,7 @@ def create_web_app(
     - optional: pipeline in a transaction [POST](/api/pipeline)
     """
     app = App(middleware=registry)
+    app.req_options.strip_url_path_trailing_slash = True
     app.add_route("/", HealthCheck())
     for table in registry.tables:
         app.add_route(
