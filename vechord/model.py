@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 import msgspec
 
@@ -46,7 +46,7 @@ class RetrievedChunk(msgspec.Struct, kw_only=True):
 class ResourceRequest(msgspec.Struct, kw_only=True):
     kind: Literal["ocr", "chunk", "embedding", "rerank", "index", "search"]
     provider: str
-    args: dict[str, str | int | float] = msgspec.field(default_factory=dict)
+    args: dict[str, Any] = msgspec.field(default_factory=dict)
 
 
 class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
