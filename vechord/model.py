@@ -50,5 +50,6 @@ class ResourceRequest(msgspec.Struct, kw_only=True):
 
 
 class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
+    name: str
     data: bytes
     steps: list[ResourceRequest]

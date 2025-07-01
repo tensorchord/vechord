@@ -8,6 +8,7 @@ from falcon.asgi import App, Request, Response
 
 from vechord.log import logger
 from vechord.model import RunRequest
+from vechord.pipeline import run_dynamic_pipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
 
 T = TypeVar("T")
@@ -124,6 +125,14 @@ class RunResource:
         request = await validate_request(RunRequest, req, resp)
         if request is None:
             return
+        res = await run_dynamic_pipeline(request, self.registry)
+        if res:
+            encoder = (
+                msgspec.msgpack
+                if req.content_type == falcon.MEDIA_MSGPACK
+                else msgspec.json
+            )
+            resp.data = encoder.encode(res, enc_hook=vechord_encode_hook)
 
 
 class OpenAPIResource:

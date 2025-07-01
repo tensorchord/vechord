@@ -78,8 +78,11 @@ class VechordRegistry:
         """Falcon ASGI middleware lifespan hook."""
         await self.__aexit__(None, None, None)
 
-    async def init_table_index(self):
-        for table in self.tables:
+    async def init_table_index(self, tables: Optional[Iterable[type[Table]]] = None):
+        if tables is None:
+            tables = self.tables
+
+        for table in tables:
             await self.client.create_table_if_not_exists(
                 table.name(), table.table_schema()
             )
