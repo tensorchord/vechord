@@ -176,7 +176,7 @@ async def test_foreign_key(registry):
     chunks = [
         Chunk(doc_id=1, text="hello", keyword=Keyword("hello"), vector=gen_vector()),
         Chunk(doc_id=1, text="world", keyword=Keyword("world"), vector=gen_vector()),
-        Chunk(doc_id=1, text="no keyword filed", keyword=None, vector=gen_vector()),
+        Chunk(doc_id=1, text="no keyword field", keyword=None, vector=gen_vector()),
     ]
     for record in docs + chunks:
         await registry.insert(record)
