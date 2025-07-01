@@ -141,7 +141,9 @@ class OpenAPIResource:
     ) -> None:
         self.openapi = OpenAPI()
         self.openapi.register_route("/", "get", summary="health check")
-        self.openapi.register_route("/api/run", "post", summary="run the pipeline")
+        self.openapi.register_route(
+            "/api/run", "post", summary="run the pipeline", request_type=RunRequest
+        )
         if include_pipeline:
             self.openapi.register_route(
                 "/api/pipeline", "post", summary="run the pipeline"

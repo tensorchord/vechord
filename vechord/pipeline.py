@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class IndexOption:
-    def __init__(self, vector, keyword):
+    def __init__(self, vector = None, keyword = None):
         self.vector = msgspec.convert(vector, VectorIndex) if vector else None
         self.keyword = msgspec.convert(keyword, KeywordIndex) if keyword else None
 
@@ -43,7 +43,7 @@ class KeywordSearchOption:
 
 
 class SearchOption:
-    def __init__(self, vector, keyword):
+    def __init__(self, vector = None, keyword = None):
         self.vector = msgspec.convert(vector, VectorSearchOption) if vector else None
         self.keyword = (
             msgspec.convert(keyword, KeywordSearchOption) if keyword else None
@@ -68,8 +68,10 @@ PROVIDER_MAP = {
 
 @contextmanager
 def set_api_key_in_env(keys: Iterable[str], values: Iterable[Optional[str]]):
-    old_values = {key: environ.get(key) for key in keys}
+    old_values = {key: environ.get(key) for key in keys if key}
     for key, value in zip(keys, values, strict=False):
+        if not key:
+            continue
         if value is None:
             environ.pop(key)
         environ[key] = value
@@ -84,7 +86,7 @@ def set_api_key_in_env(keys: Iterable[str], values: Iterable[Optional[str]]):
 
 
 async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # noqa: PLR0912
-    calls, api_keys = build_pipeline(request.steps)
+    calls = build_pipeline(request.steps)
     emb: Optional[BaseEmbedding] = calls.get("embedding")
     if not emb:
         raise ValueError("No embedding provider specified in the request")
@@ -110,59 +112,49 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
         await vr.init_table_index([DefaultDocument, Chunk])
 
         # run the pipeline
-        with set_api_key_in_env(api_keys.keys(), api_keys.values()):
-            if ocr := calls.get("ocr"):
-                text = await ocr.extract_pdf(request.data)
-            else:
-                text = request.data.decode("utf-8")
-            if chunker := calls.get("chunk"):
-                chunks = await chunker.segment(text)
-            else:
-                chunks = [text]
-            vecs = []
-            for chunk in chunks:
-                vecs.append(await emb.vectorize_chunk(chunk))
+        if ocr := calls.get("ocr"):
+            text = await ocr.extract_pdf(request.data)
+        else:
+            text = request.data.decode("utf-8")
+        if chunker := calls.get("chunk"):
+            chunks = await chunker.segment(text)
+        else:
+            chunks = [text]
+        vecs = []
+        for chunk in chunks:
+            vecs.append(await emb.vectorize_chunk(chunk))
 
-            async with vr.client.transaction():
-                doc = DefaultDocument(text=text)
-                vr.insert(doc)
-                for i, vec in enumerate(vecs):
-                    vr.insert(
-                        Chunk(
-                            vec=vec,
-                            doc_id=doc.uid,
-                            text=chunks[i],
-                            keyword=Keyword(text=chunks[i])
-                            if use_keyword_index
-                            else None,
-                        )
+        async with vr.client.transaction():
+            doc = DefaultDocument(text=text)
+            await vr.insert(doc)
+            for i, vec in enumerate(vecs):
+                await vr.insert(
+                    Chunk(
+                        vec=vec,
+                        doc_id=doc.uid,
+                        text=chunks[i],
+                        keyword=Keyword(text=chunks[i]) if use_keyword_index else None,
                     )
+                )
     elif search:
         query = request.data.decode("utf-8")
         retrieved: list[Chunk] = []
-        with set_api_key_in_env(api_keys.keys(), api_keys.values()):
-            if vec_opt := search.vector:
-                vec = await emb.vectorize_query(query)
-                retrieved.extend(
-                    await vr.search_by_vector(
-                        Chunk, vec, vec_opt.topk, probe=vec_opt.probe
-                    )
-                )
-            if keyword_opt := search.keyword:
-                retrieved.extend(
-                    await vr.search_by_keyword(Chunk, query, keyword_opt.topk)
-                )
-            if rerank := calls.get("rerank"):
-                indices = await rerank.rerank(
-                    query, [chunk.text for chunk in retrieved]
-                )
-                retrieved = [retrieved[i] for i in indices]
+        if vec_opt := search.vector:
+            vec = await emb.vectorize_query(query)
+            retrieved.extend(
+                await vr.search_by_vector(Chunk, vec, vec_opt.topk, probe=vec_opt.probe)
+            )
+        if keyword_opt := search.keyword:
+            retrieved.extend(await vr.search_by_keyword(Chunk, query, keyword_opt.topk))
+        if rerank := calls.get("rerank"):
+            indices = await rerank.rerank(query, [chunk.text for chunk in retrieved])
+            retrieved = [retrieved[i] for i in indices]
         return retrieved
 
 
 def build_pipeline(
     steps: list[ResourceRequest],
-) -> tuple[dict[str, Callable], dict[str, str]]:
+) -> dict[str, Callable]:
     calls = {}
     for step in steps:
         if step.kind not in PROVIDER_MAP:
@@ -174,12 +166,14 @@ def build_pipeline(
                 f"Unsupported provider: {step.provider} for kind: {step.kind}"
             )
 
-        api_keys: dict[str, str] = {}
+        api_name, api_key = "", None
         args = step.args
         if "api_key" in args:
-            api_keys[f"{step.provider.upper()}_API_KEY"] = args.pop("api_key", None)
-        calls[step.kind] = provider(**args)
-    return calls, api_keys
+            api_name = f"{step.provider.upper()}_API_KEY"
+            api_key = args.pop("api_key", None)
+        with set_api_key_in_env((api_name,), (api_key,)):
+            calls[step.kind] = provider(**args)
+    return calls
 
 
 class VechordPipeline:
