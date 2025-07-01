@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class IndexOption:
-    def __init__(self, vector = None, keyword = None):
+    def __init__(self, vector=None, keyword=None):
         self.vector = msgspec.convert(vector, VectorIndex) if vector else None
         self.keyword = msgspec.convert(keyword, KeywordIndex) if keyword else None
 
@@ -43,7 +43,7 @@ class KeywordSearchOption:
 
 
 class SearchOption:
-    def __init__(self, vector = None, keyword = None):
+    def __init__(self, vector=None, keyword=None):
         self.vector = msgspec.convert(vector, VectorSearchOption) if vector else None
         self.keyword = (
             msgspec.convert(keyword, KeywordSearchOption) if keyword else None
@@ -138,6 +138,10 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
                 )
     elif search:
         query = request.data.decode("utf-8")
+
+        class Chunk(_DefaultChunk):
+            pass
+
         retrieved: list[Chunk] = []
         if vec_opt := search.vector:
             vec = await emb.vectorize_query(query)
