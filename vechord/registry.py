@@ -173,7 +173,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         vec_col = cls.vector_column()
         if vec_col is None:
             raise ValueError(f"no vector column found in {cls}")
@@ -214,7 +214,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         multivec_col = cls.multivec_column()
         if multivec_col is None:
             raise ValueError(f"no multivec column found in {cls}")
@@ -250,7 +250,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         keyword_col = cls.keyword_column()
         if keyword_col is None:
             raise ValueError(f"no keyword column found in {cls}")
