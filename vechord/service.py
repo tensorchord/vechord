@@ -7,9 +7,10 @@ from defspec import OpenAPI, RenderTemplate
 from falcon.asgi import App, Request, Response
 
 from vechord.log import logger
-from vechord.model import RunRequest
+from vechord.model import RunAck, RunRequest
 from vechord.pipeline import run_dynamic_pipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
+from vechord.spec import _DefaultChunk
 
 T = TypeVar("T")
 M = TypeVar("M", bound=msgspec.Struct)
@@ -142,7 +143,12 @@ class OpenAPIResource:
         self.openapi = OpenAPI()
         self.openapi.register_route("/", "get", summary="health check")
         self.openapi.register_route(
-            "/api/run", "post", summary="run the pipeline", request_type=RunRequest
+            "/api/run",
+            "post",
+            summary="run the pipeline",
+            request_type=RunRequest,
+            response_type=RunAck | list[_DefaultChunk],
+            schema_hook=vechord_schema_hook,
         )
         if include_pipeline:
             self.openapi.register_route(

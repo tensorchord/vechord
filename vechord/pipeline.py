@@ -10,7 +10,7 @@ from vechord.chunk import GeminiChunker, RegexChunker
 from vechord.client import VechordClient, limit_to_transaction_buffer
 from vechord.embedding import BaseEmbedding, GeminiDenseEmbedding, OpenAIDenseEmbedding
 from vechord.extract import GeminiExtractor
-from vechord.model import ResourceRequest, RunRequest
+from vechord.model import ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
 from vechord.spec import (
     DefaultDocument,
@@ -136,6 +136,7 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
                         keyword=Keyword(text=chunks[i]) if use_keyword_index else None,
                     )
                 )
+            return RunAck(name=request.name, msg="succeed", uid=doc.uid)
     elif search:
         query = request.data.decode("utf-8")
 
