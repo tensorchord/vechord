@@ -38,20 +38,20 @@ class BaseExtractor(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def extract_pdf(self, doc: bytes) -> str:
+    async def extract_pdf(self, doc: bytes) -> str:
         raise NotImplementedError
 
     @abstractmethod
-    def extract_html(self, text: str) -> str:
+    async def extract_html(self, text: str) -> str:
         raise NotImplementedError
 
-    def extract(self, doc: Document) -> str:
+    async def extract(self, doc: Document) -> str:
         if doc.ext == ".txt":
             text = doc.data.decode("utf-8")
         elif doc.ext == ".pdf":
-            text = self.extract_pdf(doc.data)
+            text = await self.extract_pdf(doc.data)
         elif doc.ext == ".html":
-            text = self.extract_html(doc.data.decode("utf-8"))
+            text = await self.extract_html(doc.data.decode("utf-8"))
         else:
             logger.warning("unsupported file type '%s' for %s", doc.ext, doc.path)
             text = ""
@@ -67,7 +67,7 @@ class SimpleExtractor(BaseExtractor):
     def name(self) -> str:
         return "basic_extractor"
 
-    def extract_pdf(self, doc: bytes) -> str:
+    async def extract_pdf(self, doc: bytes) -> str:
         """Extract text from PDF using pypdfium2."""
         pdf = pdfium.PdfDocument(doc)
         text = []
@@ -76,7 +76,7 @@ class SimpleExtractor(BaseExtractor):
 
         return "\n".join(text)
 
-    def extract_html(self, text: str) -> str:
+    async def extract_html(self, text: str) -> str:
         """Extract text from HTML.
 
         Args:
@@ -90,7 +90,7 @@ class SimpleExtractor(BaseExtractor):
 class GeminiExtractor(SimpleExtractor):
     """Extract text with Gemini model."""
 
-    def __init__(self, model: str = "gemini-2.5-flash-preview-05-20"):
+    def __init__(self, model: str = "gemini-2.5-flash"):
         self.api_key = os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
             raise ValueError("env GEMINI_API_KEY not set")
@@ -106,7 +106,7 @@ class GeminiExtractor(SimpleExtractor):
             "Return the extracted content as it appears in the document, without "
             "any additional modification, summarization or interpretation."
         )
-        self.session = httpx.Client(
+        self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, read=120.0),
             headers={"Content-Type": "application/json"},
         )
@@ -114,10 +114,16 @@ class GeminiExtractor(SimpleExtractor):
     def name(self) -> str:
         return f"gemini_extractor_{self.model}"
 
-    def extract_pdf(self, doc: bytes) -> str:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, _exc_type, _exc_value, _traceback):
+        await self.client.aclose()
+
+    async def extract_pdf(self, doc: bytes) -> str:
         """Extract text from PDF page by page."""
         content = base64.b64encode(doc).decode("utf-8")
-        response = self.session.post(
+        response = await self.client.post(
             self.url,
             params={"key": self.api_key},
             json={

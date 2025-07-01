@@ -126,6 +126,9 @@ def test_table_cls_methods():
     assert find_schema_by_name(Chunk.table_psql_types(), "keyword") == "bm25vector"
     assert find_schema_by_name(Chunk.table_psql_types(), "uid") == "uuid"
 
+    assert Document.non_vec_columns() == Document.fields()
+    assert Chunk.non_vec_columns() == ("uid", "doc_id", "text")
+
 
 def test_vector_type():
     Dense = Vector[128]

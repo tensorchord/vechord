@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import AsyncExitStack
+from os import environ
 from typing import TypeVar
 
 from vechord.spec import Table
@@ -19,9 +20,13 @@ class CohereReranker(BaseReranker):
     """Rerank chunks using Cohere API (requires env `COHERE_API_KEY`)."""
 
     def __init__(self, model: str = "rerank-v3.5"):
+        self.api_key = environ.get("COHERE_API_KEY")
+        if not self.api_key:
+            raise ValueError("Cohere API key not found in environment variables.")
+
         import cohere
 
-        self.client = cohere.AsyncClientV2()
+        self.client = cohere.AsyncClientV2(api_key=self.api_key)
         self.model = model
 
     async def __aenter__(self):

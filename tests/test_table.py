@@ -176,11 +176,13 @@ async def test_foreign_key(registry):
     chunks = [
         Chunk(doc_id=1, text="hello", keyword=Keyword("hello"), vector=gen_vector()),
         Chunk(doc_id=1, text="world", keyword=Keyword("world"), vector=gen_vector()),
+        Chunk(doc_id=1, text="no keyword field", keyword=None, vector=gen_vector()),
     ]
     for record in docs + chunks:
         await registry.insert(record)
 
     assert len(await registry.select_by(Document.partial_init())) == len(docs)
+    assert len(await registry.select_by(Chunk.partial_init())) == len(chunks)
     # remove the doc should also remove the related chunks
     await registry.remove_by(Document.partial_init(uid=1))
     assert len(await registry.select_by(Document.partial_init())) == 1
@@ -316,3 +318,31 @@ async def test_multivec_copy(registry):
         ]
     )
     assert len(await registry.select_by(Image.partial_init())) == len(contents) + 1
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("registry", [(Document, Chunk)], indirect=True)
+async def test_search_by_return(registry):
+    num = 100
+    topk = 5
+    await registry.insert(Document(text="hello world"))
+    for i in range(num):
+        text = f"hello {i}"
+        await registry.insert(
+            Chunk(doc_id=1, text=text, vector=gen_vector(), keyword=Keyword(text))
+        )
+
+    inserted = await registry.select_by(Chunk.partial_init(), fields=["text"])
+    assert len(inserted) == num
+    for i, record in enumerate(inserted):
+        assert record.text == f"hello {i}"
+        # vector field is not selected
+        assert record.vector is msgspec.UNSET
+
+    res = await registry.search_by_vector(Chunk, gen_vector(), topk=topk)
+    assert len(res) == topk
+    assert all(record.vector is msgspec.UNSET for record in res)
+
+    res = await registry.search_by_keyword(Chunk, "hello", topk=topk)
+    assert len(res) == topk
+    assert all(record.keyword is msgspec.UNSET for record in res)

@@ -570,7 +570,7 @@ class Table(Storage):
     @classmethod
     def non_vec_columns(cls) -> Sequence[str]:
         """Get the column names that are not vector or keyword."""
-        exclude = (
+        exclude = tuple(
             col.name if col else col
             for col in (
                 cls.vector_column(),

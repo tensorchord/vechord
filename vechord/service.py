@@ -7,7 +7,10 @@ from defspec import OpenAPI, RenderTemplate
 from falcon.asgi import App, Request, Response
 
 from vechord.log import logger
+from vechord.model import RunAck, RunRequest
+from vechord.pipeline import run_dynamic_pipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
+from vechord.spec import _DefaultChunk
 
 T = TypeVar("T")
 M = TypeVar("M", bound=msgspec.Struct)
@@ -38,11 +41,14 @@ def vechord_decode_hook(obj_type: type[T], data: Any) -> T:
 
 
 async def validate_request(spec: type[M], req: Request, resp: Response) -> Optional[M]:
+    decoder = (
+        msgspec.msgpack if req.content_type == falcon.MEDIA_MSGPACK else msgspec.json
+    )
     try:
         if req.method == "GET":
             request = msgspec.convert(req.params, spec)
         else:
-            request = msgspec.json.decode(
+            request = decoder.decode(
                 await req.stream.read(), type=spec, dec_hook=vechord_decode_hook
             )
     except (msgspec.ValidationError, msgspec.DecodeError) as err:
@@ -112,12 +118,38 @@ class PipelineResource:
         await self.pipeline.run(**json)
 
 
+class RunResource:
+    def __init__(self, registry: VechordRegistry):
+        self.registry = registry
+
+    async def on_post(self, req: Request, resp: Response):
+        request = await validate_request(RunRequest, req, resp)
+        if request is None:
+            return
+        res = await run_dynamic_pipeline(request, self.registry)
+        if res:
+            encoder = (
+                msgspec.msgpack
+                if req.content_type == falcon.MEDIA_MSGPACK
+                else msgspec.json
+            )
+            resp.data = encoder.encode(res, enc_hook=vechord_encode_hook)
+
+
 class OpenAPIResource:
     def __init__(
         self, tables: list[type[Table]], include_pipeline: bool = True
     ) -> None:
         self.openapi = OpenAPI()
         self.openapi.register_route("/", "get", summary="health check")
+        self.openapi.register_route(
+            "/api/run",
+            "post",
+            summary="run the pipeline",
+            request_type=RunRequest,
+            response_type=RunAck | list[_DefaultChunk],
+            schema_hook=vechord_schema_hook,
+        )
         if include_pipeline:
             self.openapi.register_route(
                 "/api/pipeline", "post", summary="run the pipeline"
@@ -184,6 +216,7 @@ def create_web_app(
         )
     if pipeline is not None:
         app.add_route("/api/pipeline", PipelineResource(pipeline=pipeline))
+    app.add_route("/api/run", RunResource(registry=registry))
     app.add_route(
         "/openapi/spec.json", OpenAPIResource(registry.tables, pipeline is not None)
     )

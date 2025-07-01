@@ -3,7 +3,6 @@ from contextlib import AsyncExitStack
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
 from typing import (
-    Any,
     Callable,
     Optional,
     Sequence,
@@ -14,12 +13,9 @@ from typing import (
 
 import numpy as np
 
-from vechord.client import (
-    VechordClient,
-    limit_to_transaction_buffer,
-    select_transaction_buffer,
-)
+from vechord.client import VechordClient, select_transaction_buffer
 from vechord.log import logger
+from vechord.pipeline import VechordPipeline
 from vechord.spec import Table, Vector
 
 T = TypeVar("T", bound=Table)
@@ -30,41 +26,6 @@ def is_list_of_type(typ) -> bool:
     if origin is None:
         return False
     return issubclass(origin, (Iterable, AsyncIterable))
-
-
-class VechordPipeline:
-    """Set up the pipeline to run multiple functions in a transaction.
-
-    Args:
-        client: :class:`VectorChordClient` to be used for the transaction.
-        steps: a list of functions to be run in the pipeline. The first function
-            will be used to accept the input, and the last function will be used
-            to return the output. The rest of the functions will be used to
-            process the data in between. The functions will be run in the order
-            they are defined in the list.
-    """
-
-    def __init__(self, client: VechordClient, steps: list[Callable]):
-        self.client = client
-        self.steps = steps
-
-    async def run(self, *args, **kwargs) -> Any:
-        """Execute the pipeline in a transactional manner.
-
-        All the `args` and `kwargs` will be passed to the first function in the
-        pipeline. The pipeline will run in *one* transaction, and all the `inject`
-        can only see the data inserted in this transaction (to guarantee only the
-        new inserted data will be processed in this pipeline).
-
-        This will also return the final result of the last function in the pipeline.
-        """
-        async with self.client.transaction():
-            with limit_to_transaction_buffer():
-                # only the 1st one can accept input (could be empty)
-                await self.steps[0](*args, **kwargs)
-                for func in self.steps[1:-1]:
-                    await func()
-                return await self.steps[-1]()
 
 
 class VechordRegistry:
@@ -117,8 +78,11 @@ class VechordRegistry:
         """Falcon ASGI middleware lifespan hook."""
         await self.__aexit__(None, None, None)
 
-    async def init_table_index(self):
-        for table in self.tables:
+    async def init_table_index(self, tables: Optional[Iterable[type[Table]]] = None):
+        if tables is None:
+            tables = self.tables
+
+        for table in tables:
             await self.client.create_table_if_not_exists(
                 table.name(), table.table_schema()
             )
@@ -209,7 +173,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         vec_col = cls.vector_column()
         if vec_col is None:
             raise ValueError(f"no vector column found in {cls}")
@@ -250,7 +214,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         multivec_col = cls.multivec_column()
         if multivec_col is None:
             raise ValueError(f"no multivec column found in {cls}")
@@ -286,7 +250,7 @@ class VechordRegistry:
         """
         if not issubclass(cls, Table):
             raise ValueError(f"unsupported class {cls}")
-        fields = cls.non_vec_columns() if return_fields is None else return_fields
+        fields = return_fields or cls.non_vec_columns()
         keyword_col = cls.keyword_column()
         if keyword_col is None:
             raise ValueError(f"no keyword column found in {cls}")
