@@ -93,8 +93,7 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
     dim = emb.get_dim()
     index: IndexOption = calls.get("index")
     search: SearchOption = calls.get("search")
-    # configure the registry
-    vr.ns = request.name
+    vr.reset_namespace(request.name)
 
     if index is None and search is None:
         raise ValueError("No index or search option specified in the request")
@@ -133,7 +132,7 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
                         vec=vec,
                         doc_id=doc.uid,
                         text=chunks[i],
-                        keyword=Keyword(text=chunks[i]) if use_keyword_index else None,
+                        keyword=Keyword(chunks[i]) if use_keyword_index else None,
                     )
                 )
             return RunAck(name=request.name, msg="succeed", uid=doc.uid)
