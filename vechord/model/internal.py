@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Any, Literal
 
 import msgspec
 
@@ -32,30 +31,7 @@ class SparseEmbedding(msgspec.Struct, kw_only=True, frozen=True):
     values: list[float]
 
 
-class Keywords(msgspec.Struct, kw_only=True):
-    words: list[str]
-    weights: list[float]
-
-
 class RetrievedChunk(msgspec.Struct, kw_only=True):
     uid: str
     text: str
     score: float
-
-
-class ResourceRequest(msgspec.Struct, kw_only=True):
-    kind: Literal["ocr", "chunk", "embedding", "rerank", "index", "search"]
-    provider: str
-    args: dict[str, Any] = msgspec.field(default_factory=dict)
-
-
-class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
-    name: str
-    data: bytes
-    steps: list[ResourceRequest]
-
-
-class RunAck(msgspec.Struct, kw_only=True, frozen=True):
-    name: str
-    msg: str
-    uid: str

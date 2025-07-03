@@ -13,6 +13,8 @@ import httpx
 # https://ai.google.dev/gemini-api/docs/rate-limits#tier-1
 GEMINI_GENERATE_RPS = 16.66
 GEMINI_EMBEDDING_RPS = 0.6
+# https://docs.voyageai.com/docs/rate-limits
+VOYAGE_EMBEDDING_RPS = 33.33
 
 
 class RateLimitTransport(httpx.AsyncHTTPTransport):
