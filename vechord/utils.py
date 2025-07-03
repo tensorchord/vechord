@@ -10,6 +10,10 @@ else:
 
 import httpx
 
+# https://ai.google.dev/gemini-api/docs/rate-limits#tier-1
+GEMINI_GENERATE_RPS = 16.66
+GEMINI_EMBEDDING_RPS = 0.6
+
 
 class RateLimitTransport(httpx.AsyncHTTPTransport):
     def __init__(self, max_per_second: float = 5, **kwargs) -> None:

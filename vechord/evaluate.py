@@ -7,7 +7,7 @@ import httpx
 import pytrec_eval
 
 from vechord.model import RetrievedChunk
-from vechord.utils import RateLimitTransport
+from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
 class BaseEvaluator(ABC):
@@ -80,7 +80,7 @@ class GeminiEvaluator(BaseEvaluator):
         self.client = httpx.AsyncClient(
             headers={"Content-Type": "application/json"},
             timeout=httpx.Timeout(120.0, connect=5.0),
-            transport=RateLimitTransport(max_per_second=16),
+            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
         self.prompt = """
 Given the following chunk of text and the overall document it belongs to, generate 
