@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 import httpx
 import msgspec
 
+from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
+
 
 class BaseAugmenter(ABC):
     @abstractmethod
@@ -49,6 +51,7 @@ class GeminiAugmenter(BaseAugmenter):
         self.client = httpx.AsyncClient(
             headers={"Content-Type": "application/json"},
             timeout=httpx.Timeout(120.0, connect=5.0),
+            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
 
     async def __aenter__(self):

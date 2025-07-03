@@ -9,6 +9,7 @@ import pypdfium2 as pdfium
 
 from vechord.log import logger
 from vechord.model import Document
+from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
 class BaseHTMLParser(HTMLParser):
@@ -109,6 +110,7 @@ class GeminiExtractor(SimpleExtractor):
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, read=120.0),
             headers={"Content-Type": "application/json"},
+            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
 
     def name(self) -> str:

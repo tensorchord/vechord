@@ -8,6 +8,7 @@ import numpy as np
 
 from vechord.log import logger
 from vechord.model import SparseEmbedding
+from vechord.utils import GEMINI_EMBEDDING_RPS, RateLimitTransport
 
 
 class VecType(Enum):
@@ -91,6 +92,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
             params={"key": self.api_key},
             headers={"Content-Type": "application/json"},
             timeout=httpx.Timeout(30.0, connect=10.0),
+            transport=RateLimitTransport(max_per_second=GEMINI_EMBEDDING_RPS),
         )
 
     async def __aenter__(self):
