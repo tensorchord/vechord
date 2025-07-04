@@ -1,13 +1,13 @@
 import contextlib
-import contextvars
 import math
+from contextvars import ContextVar
 from typing import Any, Optional, Sequence
 
 import numpy as np
-import psycopg
 from pgvector.psycopg import register_vector_async
-from psycopg import sql
-from psycopg.pq import TransactionStatus
+from psycopg import AsyncConnection, sql
+from psycopg.errors import DatabaseError
+from psycopg_pool import AsyncConnectionPool
 
 from vechord.spec import (
     IndexColumn,
@@ -20,20 +20,19 @@ from vechord.spec import (
 
 DEFAULT_TOKENIZER = ("bert_base_uncased", "wiki_tocken")
 
-active_cursor = contextvars.ContextVar("active_cursor", default=None)
-select_transaction_buffer = contextvars.ContextVar(
-    "select_transaction_buffer", default=False
+select_transaction_buffer_conn: ContextVar[AsyncConnection] = ContextVar(
+    "select_transaction_buffer_conn", default=None
 )
 
 
-@contextlib.contextmanager
-def limit_to_transaction_buffer():
+@contextlib.asynccontextmanager
+async def limit_to_transaction_buffer_conn(conn: AsyncConnection):
     """Only the rows inserted in the current transaction are returned."""
-    token = select_transaction_buffer.set(True)
+    token = select_transaction_buffer_conn.set(conn)
     try:
         yield
     finally:
-        select_transaction_buffer.reset(token)
+        select_transaction_buffer_conn.reset(token)
 
 
 class VechordClient:
@@ -48,51 +47,44 @@ class VechordClient:
     def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.url = url
-        self.conn: Optional[psycopg.AsyncConnection] = None
+        self.pool = AsyncConnectionPool(
+            self.url, open=False, configure=register_vector_async, max_size=16
+        )
 
-    async def connect(self):
-        self.conn = await psycopg.AsyncConnection.connect(self.url, autocommit=True)
-        async with self.transaction():
-            cursor = self.get_cursor()
+    @contextlib.asynccontextmanager
+    async def get_connection(self):
+        # reuse the connection in a custom transaction buffer
+        if conn := select_transaction_buffer_conn.get():
+            yield conn
+            return
+
+        async with self.pool.connection() as conn:
+            yield conn
+
+    async def init_extension(self):
+        """Initialize the required PostgreSQL extensions and set the search PATH.
+
+        This should be called once before using the ConnectionPool since the pool
+        requires the `vector` type to be created in the Database.
+        """
+        async with (
+            await AsyncConnection.connect(self.url) as conn,
+            conn.cursor() as cursor,
+        ):
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord_bm25")
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_tokenizer")
             await cursor.execute(
                 'SET search_path TO "$user", public, bm25_catalog, tokenizer_catalog'
             )
-        await register_vector_async(self.conn)
 
     async def __aenter__(self):
-        await self.connect()
+        await self.init_extension()
+        await self.pool.open()
         return self
 
     async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        if self.conn:
-            await self.conn.close()
-
-    @contextlib.asynccontextmanager
-    async def transaction(self):
-        """Create a transaction context manager (when there is no transaction)."""
-        if self.conn.info.transaction_status != TransactionStatus.IDLE:
-            yield None
-            return
-
-        async with self.conn.transaction():
-            cursor = self.conn.cursor()
-            token = active_cursor.set(cursor)
-            try:
-                yield cursor
-            finally:
-                active_cursor.reset(token)
-
-    def get_cursor(self) -> psycopg.AsyncCursor:
-        """Get the current cursor or create a new one."""
-        cursor = active_cursor.get()
-        if cursor is not None:
-            # in a transaction
-            return cursor
-        # single command auto-commit
-        return self.conn.cursor()
+        await self.pool.close()
 
     async def create_table_if_not_exists(
         self, name: str, schema: Sequence[tuple[str, str]]
@@ -104,20 +96,18 @@ class VechordClient:
             )
             for col, typ in schema
         )
-        async with self.transaction():
-            cursor = self.get_cursor()
-            await cursor.execute(
+        async with self.get_connection() as conn:
+            await conn.execute(
                 sql.SQL("CREATE TABLE IF NOT EXISTS {table} ({columns});").format(
                     table=sql.Identifier(f"{self.ns}_{name}"), columns=columns
                 )
             )
 
     async def create_tokenizer(self):
-        async with self.transaction():
-            cursor = self.get_cursor()
+        async with self.get_connection() as conn:
             try:
                 for name in DEFAULT_TOKENIZER:
-                    await cursor.execute(
+                    await conn.execute(
                         sql.SQL(
                             "SELECT create_tokenizer({name}, $$model={model}$$)"
                         ).format(
@@ -125,39 +115,38 @@ class VechordClient:
                             model=sql.Identifier(name),
                         )
                     )
-            except psycopg.errors.DatabaseError as err:
+            except DatabaseError as err:
                 if "already exists" not in str(err):
                     raise
 
     async def create_index_if_not_exists(self, name: str, column: IndexColumn):
-        async with self.transaction():
-            cursor = self.get_cursor()
-            if isinstance(column.index, UniqueIndex):
-                query = sql.SQL(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} "
-                    "({column}) {config}"
-                ).format(
-                    index_name=sql.Identifier(self._index_name(name, column)),
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    column=sql.Identifier(column.name),
-                    config=sql.SQL(column.index.config()),
+        if isinstance(column.index, UniqueIndex):
+            query = sql.SQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} "
+                "({column}) {config}"
+            ).format(
+                index_name=sql.Identifier(self._index_name(name, column)),
+                table=sql.Identifier(f"{self.ns}_{name}"),
+                column=sql.Identifier(column.name),
+                config=sql.SQL(column.index.config()),
+            )
+        else:
+            query = sql.SQL(
+                "CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
+                "USING {index} ({column} {op_name})"
+            ).format(
+                index_name=sql.Identifier(self._index_name(name, column)),
+                table=sql.Identifier(f"{self.ns}_{name}"),
+                index=sql.SQL(column.index.index),
+                column=sql.Identifier(column.name),
+                op_name=sql.SQL(column.index.op_name),
+            )
+            if config := column.index.config():
+                query += sql.SQL(" WITH (options = $${config}$$)").format(
+                    config=sql.SQL(config)
                 )
-            else:
-                query = sql.SQL(
-                    "CREATE INDEX IF NOT EXISTS {index_name} ON {table} "
-                    "USING {index} ({column} {op_name})"
-                ).format(
-                    index_name=sql.Identifier(self._index_name(name, column)),
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    index=sql.SQL(column.index.index),
-                    column=sql.Identifier(column.name),
-                    op_name=sql.SQL(column.index.op_name),
-                )
-                if config := column.index.config():
-                    query += sql.SQL(" WITH (options = $${config}$$)").format(
-                        config=sql.SQL(config)
-                    )
-            await cursor.execute(query)
+        async with self.get_connection() as conn:
+            await conn.execute(query)
 
     def _index_name(self, name: str, column: IndexColumn):
         return f"{self.ns}_{name}_{column.name}_{column.index.name}"
@@ -177,7 +166,6 @@ class VechordClient:
             inserted in the current transaction.
         """
         columns = sql.SQL(", ").join(map(sql.Identifier, raw_columns))
-        cursor = self.get_cursor()
         query = sql.SQL("SELECT {columns} FROM {table}").format(
             columns=columns,
             table=sql.Identifier(f"{self.ns}_{name}"),
@@ -196,8 +184,10 @@ class VechordClient:
             query += sql.SQL(" WHERE xmin = pg_current_xact_id()::xid;")
         if limit:
             query += sql.SQL(" LIMIT {}").format(sql.Literal(limit))
-        await cursor.execute(query, kvs)
-        return await cursor.fetchall()
+
+        async with self.get_connection() as conn:
+            cursor = await conn.execute(query, kvs)
+            return await cursor.fetchall()
 
     @staticmethod
     def _to_placeholder(kv: tuple[str, Any]):
@@ -212,51 +202,50 @@ class VechordClient:
     async def insert(self, name: str, values: dict):
         columns = sql.SQL(", ").join(map(sql.Identifier, values))
         placeholders = sql.SQL(", ").join(map(self._to_placeholder, values.items()))
-        cursor = self.get_cursor()
-        await cursor.execute(
-            sql.SQL("INSERT INTO {table} ({columns}) VALUES ({placeholders});").format(
-                table=sql.Identifier(f"{self.ns}_{name}"),
-                columns=columns,
-                placeholders=placeholders,
-            ),
-            values,
+        query = sql.SQL(
+            "INSERT INTO {table} ({columns}) VALUES ({placeholders});"
+        ).format(
+            table=sql.Identifier(f"{self.ns}_{name}"),
+            columns=columns,
+            placeholders=placeholders,
         )
+        async with self.get_connection() as conn:
+            await conn.execute(query, values)
 
     async def copy_bulk(self, name: str, values: Sequence[dict], types: Sequence[str]):
         columns = sql.SQL(", ").join(map(sql.Identifier, values[0]))
-        async with self.transaction():
-            cursor = self.get_cursor()
-            async with cursor.copy(
-                sql.SQL(
-                    "COPY {table} ({columns}) FROM STDIN WITH (FORMAT BINARY)"
-                ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
-                    columns=columns,
-                )
-            ) as copy:
+        query = sql.SQL(
+            "COPY {table} ({columns}) FROM STDIN WITH (FORMAT BINARY)"
+        ).format(
+            table=sql.Identifier(f"{self.ns}_{name}"),
+            columns=columns,
+        )
+        async with self.get_connection() as conn:
+            cursor = conn.cursor()
+            async with cursor.copy(query) as copy:
                 copy.set_types(types=types)
                 for value in values:
                     await copy.write_row(tuple(value.values()))
 
     async def delete(self, name: str, kvs: dict):
-        cursor = self.get_cursor()
-        if kvs:
-            condition = sql.SQL(" AND ").join(
-                sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
-                for col in kvs
-            )
-            await cursor.execute(
-                sql.SQL("DELETE FROM {table} WHERE {condition};").format(
-                    table=sql.Identifier(f"{self.ns}_{name}"), condition=condition
-                ),
-                kvs,
-            )
-        else:
-            await cursor.execute(
-                sql.SQL("DELETE FROM {table};").format(
-                    table=sql.Identifier(f"{self.ns}_{name}")
+        async with self.get_connection() as conn:
+            if kvs:
+                condition = sql.SQL(" AND ").join(
+                    sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
+                    for col in kvs
                 )
-            )
+                await conn.execute(
+                    sql.SQL("DELETE FROM {table} WHERE {condition};").format(
+                        table=sql.Identifier(f"{self.ns}_{name}"), condition=condition
+                    ),
+                    kvs,
+                )
+            else:
+                await conn.execute(
+                    sql.SQL("DELETE FROM {table};").format(
+                        table=sql.Identifier(f"{self.ns}_{name}")
+                    )
+                )
 
     async def query_vec(  # noqa: PLR0913
         self,
@@ -274,13 +263,12 @@ class VechordClient:
             and vec_col.index.lists > 1
         ):
             probe = math.ceil(vec_col.index.lists / 16)
-        async with self.transaction():
-            cursor = self.get_cursor()
-            await cursor.execute(
-                sql.SQL("SET LOCAL vchordrq.probes = {};").format(
-                    sql.Literal(probe or "")
-                )
-            )
+        set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
+            sql.Literal(probe or "")
+        )
+        async with self.get_connection() as conn:
+            cursor = conn.cursor()
+            await cursor.execute(set_probe)
             await cursor.execute(
                 sql.SQL(
                     "SELECT {columns} FROM {table} ORDER BY {vec_col} {op} %s LIMIT %s;"
@@ -311,26 +299,27 @@ class VechordClient:
             and multivec_col.index.lists > 1
         ):
             probe = math.ceil(multivec_col.index.lists / 16)
-        cursor = self.get_cursor()
-        await cursor.execute(
-            sql.SQL("SET LOCAL vchordrq.probes = {};").format(sql.Literal(probe or ""))
+        set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
+            sql.Literal(probe or "")
         )
-        await cursor.execute(
-            sql.SQL("SET LOCAL vchordrq.maxsim_refine = {};").format(
-                sql.Literal(maxsim_refine)
+        set_refine = sql.SQL("SET LOCAL vchordrq.maxsim_refine = {};").format(
+            sql.Literal(maxsim_refine)
+        )
+        async with self.get_connection() as conn:
+            cursor = conn.cursor()
+            await cursor.execute(set_probe)
+            await cursor.execute(set_refine)
+            await cursor.execute(
+                sql.SQL(
+                    "SELECT {columns} FROM {table} ORDER BY {multivec_col} @# %s LIMIT %s;"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    columns=columns,
+                    multivec_col=sql.Identifier(multivec_col.name),
+                ),
+                (vec, topk),
             )
-        )
-        await cursor.execute(
-            sql.SQL(
-                "SELECT {columns} FROM {table} ORDER BY {multivec_col} @# %s LIMIT %s;"
-            ).format(
-                table=sql.Identifier(f"{self.ns}_{name}"),
-                columns=columns,
-                multivec_col=sql.Identifier(multivec_col.name),
-            ),
-            (vec, topk),
-        )
-        return await cursor.fetchall()
+            return await cursor.fetchall()
 
     async def query_keyword(  # noqa: PLR0913
         self,
@@ -342,26 +331,26 @@ class VechordClient:
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        cursor = self.get_cursor()
-        await cursor.execute(
-            sql.SQL(
-                "SELECT {columns} FROM {table} ORDER BY {keyword_col} <&> "
-                "to_bm25query({index}, tokenize(%s, {tokenizer})) LIMIT %s;"
-            ).format(
-                table=sql.Identifier(f"{self.ns}_{name}"),
-                columns=columns,
-                index=sql.Literal(self._index_name(name, keyword_col)),
-                tokenizer=sql.Literal(tokenizer),
-                keyword_col=sql.Identifier(keyword_col.name),
-            ),
-            (keyword, topk),
-        )
-        return await cursor.fetchall()
+        async with self.get_connection() as conn:
+            cursor = await conn.execute(
+                sql.SQL(
+                    "SELECT {columns} FROM {table} ORDER BY {keyword_col} <&> "
+                    "to_bm25query({index}, tokenize(%s, {tokenizer})) LIMIT %s;"
+                ).format(
+                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    columns=columns,
+                    index=sql.Literal(self._index_name(name, keyword_col)),
+                    tokenizer=sql.Literal(tokenizer),
+                    keyword_col=sql.Identifier(keyword_col.name),
+                ),
+                (keyword, topk),
+            )
+            return await cursor.fetchall()
 
     async def drop(self, name: str):
-        cursor = self.get_cursor()
-        await cursor.execute(
-            sql.SQL("DROP TABLE IF EXISTS {table} CASCADE;").format(
-                table=sql.Identifier(f"{self.ns}_{name}")
+        async with self.get_connection() as conn:
+            await conn.execute(
+                sql.SQL("DROP TABLE IF EXISTS {table} CASCADE;").format(
+                    table=sql.Identifier(f"{self.ns}_{name}")
+                )
             )
-        )

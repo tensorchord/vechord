@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from functools import partial
 from typing import Annotated, Optional
@@ -322,22 +323,27 @@ async def test_multivec_copy(registry):
 
 @pytest.mark.db
 @pytest.mark.parametrize("registry", [(Document, Chunk)], indirect=True)
-async def test_search_by_return(registry):
+async def test_search_return(registry):
     num = 100
     topk = 5
     await registry.insert(Document(text="hello world"))
+    chunks = []
     for i in range(num):
         text = f"hello {i}"
-        await registry.insert(
+        chunks.append(
             Chunk(doc_id=1, text=text, vector=gen_vector(), keyword=Keyword(text))
         )
+    await asyncio.gather(*[registry.insert(chunk) for chunk in chunks])
 
-    inserted = await registry.select_by(Chunk.partial_init(), fields=["text"])
+    inserted: list[Chunk] = await registry.select_by(
+        Chunk.partial_init(), fields=["text"]
+    )
     assert len(inserted) == num
-    for i, record in enumerate(inserted):
-        assert record.text == f"hello {i}"
-        # vector field is not selected
+    for record in inserted:
+        assert record.text.startswith("hello")
+        # vector field is not selected by default
         assert record.vector is msgspec.UNSET
+        assert record.keyword is msgspec.UNSET
 
     res = await registry.search_by_vector(Chunk, gen_vector(), topk=topk)
     assert len(res) == topk

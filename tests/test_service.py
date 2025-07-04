@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from http import HTTPStatus
 from uuid import UUID
@@ -94,3 +95,16 @@ async def test_service_pipeline(client):
     assert len(chunks) == len(text.split())
     for i, chunk in enumerate(chunks):
         assert chunk["text"] == f"num[{i + 1}]"
+
+
+@pytest.mark.parametrize("registry", [(DefaultDocument, DefaultChunk)], indirect=True)
+async def test_concurrent_db_transaction(client):
+    requests = [
+        client.simulate_post(
+            "/api/pipeline", json={"text": " ".join(map(str, range(i, i + 5)))}
+        )
+        for i in range(5)
+    ]
+    responses = await asyncio.gather(*requests)
+    for resp in responses:
+        assert resp.status_code == HTTPStatus.OK, resp.content

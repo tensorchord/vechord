@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Optional
 import msgspec
 
 from vechord.chunk import GeminiChunker, RegexChunker
-from vechord.client import VechordClient, limit_to_transaction_buffer
+from vechord.client import VechordClient, limit_to_transaction_buffer_conn
 from vechord.embedding import (
     BaseEmbedding,
     GeminiDenseEmbedding,
@@ -136,7 +136,10 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
             for chunk in chunks:
                 vecs.append(await emb.vectorize_chunk(chunk))
 
-        async with vr.client.transaction():
+        async with (
+            vr.client.get_connection() as conn,
+            limit_to_transaction_buffer_conn(conn),
+        ):
             doc = DefaultDocument(text=text)
             await vr.insert(doc)
             for i, vec in enumerate(vecs):
@@ -219,10 +222,12 @@ class VechordPipeline:
 
         This will also return the final result of the last function in the pipeline.
         """
-        async with self.client.transaction():
-            with limit_to_transaction_buffer():
-                # only the 1st one can accept input (could be empty)
-                await self.steps[0](*args, **kwargs)
-                for func in self.steps[1:-1]:
-                    await func()
-                return await self.steps[-1]()
+        async with (
+            self.client.get_connection() as conn,
+            limit_to_transaction_buffer_conn(conn),
+        ):
+            # only the 1st one can accept input (could be empty)
+            await self.steps[0](*args, **kwargs)
+            for func in self.steps[1:-1]:
+                await func()
+            return await self.steps[-1]()

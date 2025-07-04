@@ -13,7 +13,7 @@ from typing import (
 
 import numpy as np
 
-from vechord.client import VechordClient, select_transaction_buffer
+from vechord.client import VechordClient, select_transaction_buffer_conn
 from vechord.log import logger
 from vechord.pipeline import VechordPipeline
 from vechord.spec import Table, Vector
@@ -377,7 +377,7 @@ class VechordRegistry:
                     arguments = await self.client.select(
                         input.name(),
                         columns,
-                        from_buffer=select_transaction_buffer.get(),
+                        from_buffer=select_transaction_buffer_conn.get() is not None,
                     )
 
                 if output is None:
