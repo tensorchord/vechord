@@ -335,7 +335,9 @@ async def test_search_return(registry):
         )
     await asyncio.gather(*[registry.insert(chunk) for chunk in chunks])
 
-    inserted: list[Chunk] = await registry.select_by(Chunk.partial_init(), fields=["text"])
+    inserted: list[Chunk] = await registry.select_by(
+        Chunk.partial_init(), fields=["text"]
+    )
     assert len(inserted) == num
     for record in inserted:
         assert record.text.startswith("hello")

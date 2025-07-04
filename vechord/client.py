@@ -4,9 +4,9 @@ from contextvars import ContextVar
 from typing import Any, Optional, Sequence
 
 import numpy as np
-import psycopg
 from pgvector.psycopg import register_vector_async
 from psycopg import AsyncConnection, sql
+from psycopg.errors import DatabaseError
 from psycopg_pool import AsyncConnectionPool
 
 from vechord.spec import (
@@ -47,7 +47,9 @@ class VechordClient:
     def __init__(self, namespace: str, url: str):
         self.ns = namespace
         self.url = url
-        self.pool = AsyncConnectionPool(self.url, open=False)
+        self.pool = AsyncConnectionPool(
+            self.url, open=False, configure=register_vector_async, max_size=16
+        )
 
     @contextlib.asynccontextmanager
     async def get_connection(self):
@@ -57,13 +59,18 @@ class VechordClient:
             return
 
         async with self.pool.connection() as conn:
-            # the `vector` type requires the `pgvector` extension
-            # this should be called after the `init_extension` method
-            await register_vector_async(conn)
             yield conn
 
     async def init_extension(self):
-        async with self.pool.connection() as conn, conn.cursor() as cursor:
+        """Initialize the required PostgreSQL extensions and set the search PATH.
+
+        This should be called once before using the ConnectionPool since the pool
+        requires the `vector` type to be created in the Database.
+        """
+        async with (
+            await AsyncConnection.connect(self.url) as conn,
+            conn.cursor() as cursor,
+        ):
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord CASCADE")
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS vchord_bm25")
             await cursor.execute("CREATE EXTENSION IF NOT EXISTS pg_tokenizer")
@@ -72,36 +79,12 @@ class VechordClient:
             )
 
     async def __aenter__(self):
-        await self.pool.open()
         await self.init_extension()
+        await self.pool.open()
         return self
 
     async def __aexit__(self, _exc_type, _exc_value, _traceback):
         await self.pool.close()
-
-    # @contextlib.asynccontextmanager
-    # async def transaction(self):
-    #     """Create a transaction context manager (when there is no transaction)."""
-    #     if self.conn.info.transaction_status != TransactionStatus.IDLE:
-    #         yield None
-    #         return
-
-    #     async with self.conn.transaction():
-    #         cursor = self.conn.cursor()
-    #         token = active_cursor.set(cursor)
-    #         try:
-    #             yield cursor
-    #         finally:
-    #             active_cursor.reset(token)
-
-    # def get_cursor(self) -> psycopg.AsyncCursor:
-    #     """Get the current cursor or create a new one."""
-    #     cursor = active_cursor.get()
-    #     if cursor is not None:
-    #         # in a transaction
-    #         return cursor
-    #     # single command auto-commit
-    #     return self.conn.cursor()
 
     async def create_table_if_not_exists(
         self, name: str, schema: Sequence[tuple[str, str]]
@@ -132,7 +115,7 @@ class VechordClient:
                             model=sql.Identifier(name),
                         )
                     )
-            except psycopg.errors.DatabaseError as err:
+            except DatabaseError as err:
                 if "already exists" not in str(err):
                     raise
 
