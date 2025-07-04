@@ -6,6 +6,7 @@ from vechord.model.internal import (
     SparseEmbedding,
 )
 from vechord.model.voyage import (
+    MultiModalInput,
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
@@ -15,6 +16,7 @@ from vechord.model.web import ResourceRequest, RunAck, RunRequest
 __all__ = [
     "Document",
     "Entity",
+    "MultiModalInput",
     "Relation",
     "ResourceRequest",
     "RetrievedChunk",

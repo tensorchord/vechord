@@ -10,6 +10,7 @@ import numpy as np
 
 from vechord.log import logger
 from vechord.model import (
+    MultiModalInput,
     SparseEmbedding,
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
@@ -217,7 +218,7 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
         return f"voyage_multimodal_emb_{self.model}_{self.dim}"
 
     async def vectorize(self, text, input_type: Literal["document", "query"] = "query"):
-        await self.vectorize_multimodal(text=text, input_type=input_type)
+        return await self.vectorize_multimodal(text=text, input_type=input_type)
 
     async def vectorize_multimodal(
         self,
@@ -249,7 +250,7 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
             content=self.encoder.encode(
                 VoyageMultiModalEmbeddingRequest(
                     model=self.model,
-                    inputs=[{"content": input_content}],
+                    inputs=[MultiModalInput(content=input_content)],
                     input_type=input_type,
                 )
             ),
