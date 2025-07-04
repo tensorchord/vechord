@@ -8,7 +8,13 @@ import msgspec
 
 from vechord.chunk import GeminiChunker, RegexChunker
 from vechord.client import VechordClient, limit_to_transaction_buffer
-from vechord.embedding import BaseEmbedding, GeminiDenseEmbedding, OpenAIDenseEmbedding
+from vechord.embedding import (
+    BaseEmbedding,
+    GeminiDenseEmbedding,
+    OpenAIDenseEmbedding,
+    VoyageDenseEmbedding,
+    VoyageMultiModalEmbedding,
+)
 from vechord.extract import GeminiExtractor
 from vechord.model import ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
@@ -58,6 +64,8 @@ PROVIDER_MAP = {
     "embedding": {
         "gemini": GeminiDenseEmbedding,
         "openai": OpenAIDenseEmbedding,
+        "voyage": VoyageDenseEmbedding,
+        "voyage_multimodal": VoyageMultiModalEmbedding,
     },
     "ocr": {"gemini": GeminiExtractor},
     "rerank": {"cohere": CohereReranker},
@@ -111,17 +119,22 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
         await vr.init_table_index([DefaultDocument, Chunk])
 
         # run the pipeline
-        if ocr := calls.get("ocr"):
-            text = await ocr.extract_pdf(request.data)
+        if isinstance(emb, VoyageMultiModalEmbedding):
+            vecs = [await emb.vectorize_multimodal_chunk(request.data)]
+            text = ""
+            chunks = [""]
         else:
-            text = request.data.decode("utf-8")
-        if chunker := calls.get("chunk"):
-            chunks = await chunker.segment(text)
-        else:
-            chunks = [text]
-        vecs = []
-        for chunk in chunks:
-            vecs.append(await emb.vectorize_chunk(chunk))
+            if ocr := calls.get("ocr"):
+                text = await ocr.extract_pdf(request.data)
+            else:
+                text = request.data.decode("utf-8")
+            if chunker := calls.get("chunk"):
+                chunks = await chunker.segment(text)
+            else:
+                chunks = [text]
+            vecs = []
+            for chunk in chunks:
+                vecs.append(await emb.vectorize_chunk(chunk))
 
         async with vr.client.transaction():
             doc = DefaultDocument(text=text)
