@@ -61,12 +61,12 @@ PROVIDER_MAP = {
         "regex": RegexChunker,
         "gemini": GeminiChunker,
     },
-    "embedding": {
+    "text-emb": {
         "gemini": GeminiDenseEmbedding,
         "openai": OpenAIDenseEmbedding,
         "voyage": VoyageDenseEmbedding,
-        "voyage_multimodal": VoyageMultiModalEmbedding,
     },
+    "multimodal-emb": {"voyage": VoyageMultiModalEmbedding},
     "ocr": {"gemini": GeminiExtractor},
     "rerank": {"cohere": CohereReranker},
     "index": {"vectorchord": IndexOption},
@@ -95,10 +95,11 @@ def set_api_key_in_env(keys: Iterable[str], values: Iterable[Optional[str]]):
 
 async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # noqa: PLR0912
     calls = build_pipeline(request.steps)
-    emb: Optional[BaseEmbedding] = calls.get("embedding")
-    if not emb:
+    emb: Optional[BaseEmbedding] = calls.get("text-emb")
+    multimodal: Optional[BaseEmbedding] = calls.get("multimodal-emb")
+    if not (emb or multimodal):
         raise ValueError("No embedding provider specified in the request")
-    dim = emb.get_dim()
+    dim = emb.get_dim() if emb else multimodal.get_dim()
     index: IndexOption = calls.get("index")
     search: SearchOption = calls.get("search")
     vr.reset_namespace(request.name)
@@ -119,8 +120,8 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
         await vr.init_table_index([DefaultDocument, Chunk])
 
         # run the pipeline
-        if isinstance(emb, VoyageMultiModalEmbedding):
-            vecs = [await emb.vectorize_multimodal_chunk(request.data)]
+        if multimodal:
+            vecs = [await multimodal.vectorize_multimodal_chunk(request.data)]
             text = ""
             chunks = [""]
         else:
@@ -160,7 +161,8 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
 
         retrieved: list[Chunk] = []
         if vec_opt := search.vector:
-            vec = await emb.vectorize_query(query)
+            emb_cls = emb if emb else multimodal
+            vec = await emb_cls.vectorize_query(query)
             retrieved.extend(
                 await vr.search_by_vector(Chunk, vec, vec_opt.topk, probe=vec_opt.probe)
             )
