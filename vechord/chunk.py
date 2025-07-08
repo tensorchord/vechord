@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 import httpx
 import msgspec
 
+from vechord.model import GeminiGenerateRequest, GeminiGenerateResponse
 from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
@@ -117,7 +118,10 @@ class GeminiChunker(BaseChunker):
             f"{self.model}:generateContent"
         )
         self.client = httpx.AsyncClient(
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             timeout=httpx.Timeout(120.0, connect=5.0),
             transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
@@ -136,6 +140,8 @@ The return format is a list of chunk strings.The document is as follows:
             concat=" ",
         )
         self.json_schema = msgspec.json.schema(list[str])
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     def name(self) -> str:
         return f"gemini_chunk_{self.model}"
@@ -149,21 +155,17 @@ The return format is a list of chunk strings.The document is as follows:
     async def query(self, prompt: str) -> list[str]:
         resp = await self.client.post(
             url=self.url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "response_mime_type": "application/json",
-                    "response_json_schema": self.json_schema,
-                },
-            },
-            params={"key": self.api_key},
+            content=self.encoder.encode(
+                GeminiGenerateRequest.from_prompt_structure_response(
+                    prompt=prompt,
+                    schema=self.json_schema,
+                )
+            ),
         )
         if resp.is_error:
             raise RuntimeError(f"Failed to chunk with Gemini: {resp.text}")
-        data = msgspec.json.decode(resp.content)
-        chunks = msgspec.json.decode(
-            data["candidates"][0]["content"]["parts"][0]["text"], type=list[str]
-        )
+        data = self.decoder.decode(resp.content)
+        chunks = msgspec.json.decode(data.get_text(), type=list[str])
         return chunks
 
     async def segment(self, text: str) -> list[str]:

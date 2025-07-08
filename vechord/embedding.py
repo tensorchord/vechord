@@ -101,8 +101,10 @@ class GeminiDenseEmbedding(BaseEmbedding):
             f"{self.model}:embedContent"
         )
         self.client = httpx.AsyncClient(
-            params={"key": self.api_key},
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             timeout=httpx.Timeout(30.0, connect=10.0),
             transport=RateLimitTransport(max_per_second=GEMINI_EMBEDDING_RPS),
         )
@@ -210,6 +212,14 @@ class VoyageDenseEmbedding(BaseEmbedding):
 
 
 class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
+    """Voyage Multimodal Embedding.
+
+    Accepts text, image (as bytes), or image_url.
+
+    Limits:
+        - image: less than **16 million pixels** or **20 MB** in size
+    """
+
     def __init__(self, model="voyage-multimodal-3", dim=1024):
         super().__init__(model, dim)
         self.url = "https://api.voyageai.com/v1/multimodalembeddings"

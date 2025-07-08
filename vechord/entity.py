@@ -4,7 +4,12 @@ from abc import ABC, abstractmethod
 import httpx
 import msgspec
 
-from vechord.model import Entity, Relation
+from vechord.model import (
+    Entity,
+    GeminiGenerateRequest,
+    GeminiGenerateResponse,
+    Relation,
+)
 from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
@@ -141,10 +146,15 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             f"{self.model}:generateContent"
         )
         self.client = httpx.AsyncClient(
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             timeout=httpx.Timeout(30.0, connect=5.0),
             transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     async def __aenter__(self):
         return self
@@ -156,17 +166,16 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
         json_schema = msgspec.json.schema(schema)
         resp = await self.client.post(
             url=self.url,
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "response_mime_type": "application/json",
-                    "response_json_schema": json_schema,
-                },
-            },
-            params={"key": self.api_key},
+            content=self.encoder.encode(
+                GeminiGenerateRequest.from_prompt_structure_response(
+                    prompt=prompt, schema=json_schema
+                )
+            ),
         )
         if resp.is_error:
-            raise RuntimeError(f"Failed to recognize with Gemini: {resp.text}")
+            raise RuntimeError(
+                f"Failed to recognize with Gemini [{resp.status_code}]: {resp.text}"
+            )
         return resp
 
     async def recognize(self, text) -> list[Entity]:
@@ -178,15 +187,10 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the entity in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = await self.query(
-            prompt=prompt.format(text=text),
-            schema=list[Entity],
-        )
+        resp = await self.query(prompt=prompt.format(text=text), schema=list[Entity])
         try:
-            data = msgspec.json.decode(resp.content)
-            ents = msgspec.json.decode(
-                data["candidates"][0]["content"]["parts"][0]["text"], type=list[Entity]
-            )
+            data = self.decoder.decode(resp.content)
+            ents = msgspec.json.decode(data.get_text(), type=list[Entity])
         except (msgspec.DecodeError, KeyError) as err:
             raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
         return ents
@@ -203,16 +207,10 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the relation in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = await self.query(
-            prompt=prompt.format(text=text),
-            schema=list[Relation],
-        )
+        resp = await self.query(prompt=prompt.format(text=text), schema=list[Relation])
         try:
-            data = msgspec.json.decode(resp.content)
-            rels = msgspec.json.decode(
-                data["candidates"][0]["content"]["parts"][0]["text"],
-                type=list[Relation],
-            )
+            data = self.decoder.decode(resp.content)
+            rels = msgspec.json.decode(data.get_text(), type=list[Relation])
         except (msgspec.DecodeError, KeyError) as err:
             raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
         ents: dict[str, Entity] = {}

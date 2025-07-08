@@ -4,9 +4,10 @@ from collections import defaultdict
 from typing import Sequence
 
 import httpx
+import msgspec
 import pytrec_eval
 
-from vechord.model import RetrievedChunk
+from vechord.model import GeminiGenerateRequest, GeminiGenerateResponse, RetrievedChunk
 from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
@@ -78,7 +79,10 @@ class GeminiEvaluator(BaseEvaluator):
             f"{self.model}:generateContent"
         )
         self.client = httpx.AsyncClient(
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             timeout=httpx.Timeout(120.0, connect=5.0),
             transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
@@ -90,6 +94,8 @@ use to find this exact information within the document. Prioritize using keyword
 and phrases directly from the chunk text. Consider the overall document context to 
 refine the query and avoid ambiguity.
 """
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     def name(self) -> str:
         return f"gemini_eval_{self.model}"
@@ -110,11 +116,11 @@ refine the query and avoid ambiguity.
         )
         resp = await self.client.post(
             url=self.url,
-            json={"contents": [{"parts": [{"text": contents}]}]},
-            params={"key": self.api_key},
+            content=self.encoder.encode(GeminiGenerateRequest.from_prompt(contents)),
         )
         if resp.is_error:
-            raise RuntimeError(f"Failed to generate query with Gemini: {resp.text}")
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text.strip()
+            raise RuntimeError(
+                f"Failed to generate query with Gemini [{resp.status_code}]: {resp.text}"
+            )
+        data = self.decoder.decode(resp.content)
+        return data.get_text().strip()

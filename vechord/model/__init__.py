@@ -1,3 +1,8 @@
+from vechord.model.gemini import (
+    GeminiGenerateRequest,
+    GeminiGenerateResponse,
+    GeminiMimeType,
+)
 from vechord.model.internal import (
     Document,
     Entity,
@@ -16,6 +21,9 @@ from vechord.model.web import ResourceRequest, RunAck, RunRequest
 __all__ = [
     "Document",
     "Entity",
+    "GeminiGenerateRequest",
+    "GeminiGenerateResponse",
+    "GeminiMimeType",
     "MultiModalInput",
     "Relation",
     "ResourceRequest",
