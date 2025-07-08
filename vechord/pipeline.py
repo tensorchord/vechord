@@ -16,7 +16,7 @@ from vechord.embedding import (
     VoyageMultiModalEmbedding,
 )
 from vechord.extract import GeminiExtractor
-from vechord.model import ResourceRequest, RunAck, RunRequest
+from vechord.model import InputType, ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
 from vechord.spec import (
     DefaultDocument,
@@ -33,8 +33,12 @@ if TYPE_CHECKING:
 
 class IndexOption:
     def __init__(self, vector=None, keyword=None):
-        self.vector = msgspec.convert(vector, VectorIndex) if vector else None
-        self.keyword = msgspec.convert(keyword, KeywordIndex) if keyword else None
+        self.vector = (
+            msgspec.convert(vector, VectorIndex) if vector is not None else None
+        )
+        self.keyword = (
+            msgspec.convert(keyword, KeywordIndex) if keyword is not None else None
+        )
 
 
 @dataclass
@@ -93,7 +97,7 @@ def set_api_key_in_env(keys: Iterable[str], values: Iterable[Optional[str]]):
                 environ[key] = old_value
 
 
-async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # noqa: PLR0912
+async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # noqa: PLR0912,PLR0915
     calls = build_pipeline(request.steps)
     emb: Optional[BaseEmbedding] = calls.get("text-emb")
     multimodal: Optional[BaseEmbedding] = calls.get("multimodal-emb")
@@ -125,10 +129,18 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
             text = ""
             chunks = [""]
         else:
-            if ocr := calls.get("ocr"):
-                text = await ocr.extract_pdf(request.data)
-            else:
+            if request.input_type is InputType.TEXT:
                 text = request.data.decode("utf-8")
+            elif ocr := calls.get("ocr"):
+                if request.input_type is InputType.PDF:
+                    text = await ocr.extract_pdf(request.data)
+                elif request.input_type is InputType.IMAGE:
+                    text = await ocr.extract_image(request.data)
+            else:
+                raise ValueError(
+                    f"No OCR provider for input type: {request.input_type}"
+                )
+
             if chunker := calls.get("chunk"):
                 chunks = await chunker.segment(text)
             else:

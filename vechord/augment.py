@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import httpx
 import msgspec
 
+from vechord.model import GeminiGenerateRequest, GeminiGenerateResponse
 from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
@@ -49,10 +50,15 @@ class GeminiAugmenter(BaseAugmenter):
             f"{self.model}:generateContent"
         )
         self.client = httpx.AsyncClient(
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             timeout=httpx.Timeout(120.0, connect=5.0),
             transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     async def __aenter__(self):
         return self
@@ -70,14 +76,14 @@ class GeminiAugmenter(BaseAugmenter):
             context = f"<document>\n{doc}\n</document>\n" + context
             resp = await self.client.post(
                 url=self.url,
-                json={"contents": [{"parts": [{"text": context}]}]},
-                params={"key": self.api_key},
+                content=self.encoder.encode(GeminiGenerateRequest.from_prompt(context)),
             )
             if resp.is_error:
-                raise RuntimeError(f"Failed to augment with Gemini: {resp.text}")
-            data = msgspec.json.decode(resp.content)
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            res.append(text.strip())
+                raise RuntimeError(
+                    f"Failed to augment with Gemini [{resp.status_code}]: {resp.text}"
+                )
+            data = self.decoder.decode(resp.content)
+            res.append(data.get_text().strip())
         return res
 
     async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
@@ -122,11 +128,11 @@ class GeminiAugmenter(BaseAugmenter):
         )
         resp = await self.client.post(
             url=self.url,
-            json={"contents": [{"parts": [{"text": prompt}]}]},
-            params={"key": self.api_key},
+            content=self.encoder.encode(GeminiGenerateRequest.from_prompt(prompt)),
         )
         if resp.is_error:
-            raise RuntimeError(f"Failed to augment with Gemini: {resp.text}")
-        data = msgspec.json.decode(resp.content)
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text.strip()
+            raise RuntimeError(
+                f"Failed to augment with Gemini [{resp.status_code}]: {resp.text}"
+            )
+        data = self.decoder.decode(resp.content)
+        return data.get_text().strip()

@@ -28,6 +28,12 @@ def is_list_of_type(typ) -> bool:
     return issubclass(origin, (Iterable, AsyncIterable))
 
 
+def get_iterator_type(typ) -> type:
+    if not is_list_of_type(typ):
+        return typ
+    return get_iterator_type(typ.__args__[0])
+
+
 class VechordRegistry:
     """Create a registry for the given namespace and PostgreSQL URL.
 
@@ -345,7 +351,7 @@ class VechordRegistry:
             hints = get_type_hints(func)
             returns = hints.pop("return", None)
             columns = hints.keys()
-            return_type = returns.__args__[0] if is_list_of_type(returns) else returns
+            return_type = get_iterator_type(returns)
             if output and return_type is not output:
                 raise ValueError(
                     f"expected {output}, got {return_type} in {func} output"

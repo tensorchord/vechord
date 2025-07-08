@@ -1,14 +1,19 @@
-import base64
 import os
 import unicodedata
 from abc import ABC, abstractmethod
 from html.parser import HTMLParser
 
 import httpx
+import msgspec
 import pypdfium2 as pdfium
 
 from vechord.log import logger
-from vechord.model import Document
+from vechord.model import (
+    Document,
+    GeminiGenerateRequest,
+    GeminiGenerateResponse,
+    GeminiMimeType,
+)
 from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
 
 
@@ -89,7 +94,12 @@ class SimpleExtractor(BaseExtractor):
 
 
 class GeminiExtractor(SimpleExtractor):
-    """Extract text with Gemini model."""
+    """Extract text with Gemini model.
+
+    Limits:
+        - PDF: less than **20 MB** in size, max **3072x3072** with original aspect ratio
+        - Image: less than **20 MB** in size, larger images are tiled into **768x768** tiles
+    """
 
     def __init__(self, model: str = "gemini-2.5-flash"):
         self.api_key = os.environ.get("GEMINI_API_KEY")
@@ -101,17 +111,26 @@ class GeminiExtractor(SimpleExtractor):
             "https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model}:generateContent"
         )
-        self.prompt = (
+        self.pdf_prompt = (
             "Extract the main content from the PDF document. Ensure to exclude any "
             "metadata, headers, footers, or any other non-essential information. "
             "Return the extracted content as it appears in the document, without "
             "any additional modification, summarization or interpretation."
         )
+        self.jpeg_prompt = (
+            "Extract the visible text from the image, generate a concise caption "
+            "describing the image's content or scene, return the text with caption."
+        )
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(10.0, read=120.0),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.api_key,
+            },
             transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
         )
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     def name(self) -> str:
         return f"gemini_extractor_{self.model}"
@@ -122,30 +141,25 @@ class GeminiExtractor(SimpleExtractor):
     async def __aexit__(self, _exc_type, _exc_value, _traceback):
         await self.client.aclose()
 
-    async def extract_pdf(self, doc: bytes) -> str:
-        """Extract text from PDF page by page."""
-        content = base64.b64encode(doc).decode("utf-8")
+    async def query(self, prompt: str, mime_type: GeminiMimeType, stream: bytes) -> str:
         response = await self.client.post(
             self.url,
-            params={"key": self.api_key},
-            json={
-                "contents": {
-                    "parts": [
-                        {"text": self.prompt},
-                        {
-                            "inline_data": {
-                                "mime_type": "application/pdf",
-                                "data": content,
-                            }
-                        },
-                    ]
-                }
-            },
+            content=self.encoder.encode(
+                GeminiGenerateRequest.from_prompt_with_data(prompt, mime_type, stream)
+            ),
         )
-
         if response.is_error:
-            raise RuntimeError(f"Failed to extract PDF with Gemini: {response.text}")
+            raise RuntimeError(
+                f"Failed to query Gemini [{response.status_code}]: {response.text}"
+            )
 
-        data = response.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text.strip()
+        data = self.decoder.decode(response.content)
+        return data.get_text().strip()
+
+    async def extract_image(self, img: bytes) -> str:
+        """Extract text & caption from image."""
+        return await self.query(self.jpeg_prompt, GeminiMimeType.JPEG, img)
+
+    async def extract_pdf(self, doc: bytes) -> str:
+        """Extract text from PDF page by page."""
+        return await self.query(self.pdf_prompt, GeminiMimeType.PDF, doc)

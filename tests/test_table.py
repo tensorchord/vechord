@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 from functools import partial
 from typing import Annotated, Optional
@@ -198,11 +199,9 @@ async def test_injection(registry):
         return Document(text=text)
 
     @registry.inject(input=Document, output=Chunk)
-    def create_chunk(uid: int, text: str) -> list[Chunk]:
-        return [
-            Chunk(doc_id=uid, text=t, keyword=Keyword(t), vector=gen_vector())
-            for t in text.split()
-        ]
+    async def create_chunk(uid: int, text: str) -> AsyncGenerator[Chunk]:
+        for t in text.split():
+            yield Chunk(doc_id=uid, text=t, keyword=Keyword(t), vector=gen_vector())
 
     text = "hello world what happened to vector search"
     await create_doc(text)
