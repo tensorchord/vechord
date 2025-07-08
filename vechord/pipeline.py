@@ -136,8 +136,11 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
                     text = await ocr.extract_pdf(request.data)
                 elif request.input_type is InputType.IMAGE:
                     text = await ocr.extract_image(request.data)
-                else:
-                    raise ValueError(f"Unsupported input type: {request.input_type}.")
+            else:
+                raise ValueError(
+                    f"No OCR provider for input type: {request.input_type}"
+                )
+
             if chunker := calls.get("chunk"):
                 chunks = await chunker.segment(text)
             else:
