@@ -85,17 +85,3 @@ class GeminiGenerateResponse(msgspec.Struct, kw_only=True):
         if not self.candidates or not self.candidates[0].content.parts:
             return ""
         return self.candidates[0].content.parts[0].text or ""
-
-
-if __name__ == "__main__":
-    req = GeminiGenerateRequest.from_prompt_with_data(
-        "prompt", GeminiMimeType.PDF, b"PDF content"
-    )
-    b = msgspec.json.encode(req)
-    print(b)
-    print(msgspec.json.decode(b, type=GeminiGenerateRequest))
-
-    struct = GeminiGenerateRequest.from_prompt_structure_response(
-        "prompt", {"type": "object", "properties": {"key": {"type": "string"}}}
-    )
-    print(msgspec.json.encode(struct))

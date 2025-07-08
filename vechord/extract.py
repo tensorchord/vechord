@@ -163,16 +163,3 @@ class GeminiExtractor(SimpleExtractor):
     async def extract_pdf(self, doc: bytes) -> str:
         """Extract text from PDF page by page."""
         return await self.query(self.pdf_prompt, GeminiMimeType.PDF, doc)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        async with GeminiExtractor() as extractor:
-            with open("/home/keming/cat.jpeg", "rb") as f:
-                data = f.read()
-            text = await extractor.extract_image(data)
-            print(text)
-
-    asyncio.run(main())
