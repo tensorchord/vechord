@@ -16,7 +16,7 @@ from vechord.model.voyage import (
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.model.web import ResourceRequest, RunAck, RunRequest
+from vechord.model.web import InputType, ResourceRequest, RunAck, RunRequest
 
 __all__ = [
     "Document",
@@ -24,6 +24,7 @@ __all__ = [
     "GeminiGenerateRequest",
     "GeminiGenerateResponse",
     "GeminiMimeType",
+    "InputType",
     "MultiModalInput",
     "Relation",
     "ResourceRequest",

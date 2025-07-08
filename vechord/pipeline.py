@@ -16,7 +16,7 @@ from vechord.embedding import (
     VoyageMultiModalEmbedding,
 )
 from vechord.extract import GeminiExtractor
-from vechord.model import ResourceRequest, RunAck, RunRequest
+from vechord.model import InputType, ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
 from vechord.spec import (
     DefaultDocument,
@@ -129,18 +129,15 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
             text = ""
             chunks = [""]
         else:
-            if ocr := calls.get("ocr"):
-                if request.input_type == "pdf":
+            if request.input_type is InputType.TEXT:
+                text = request.data.decode("utf-8")
+            elif ocr := calls.get("ocr"):
+                if request.input_type is InputType.PDF:
                     text = await ocr.extract_pdf(request.data)
-                elif request.input_type == "image/jpeg":
+                elif request.input_type is InputType.IMAGE:
                     text = await ocr.extract_image(request.data)
                 else:
-                    raise ValueError(
-                        f"Unsupported input type: {request.input_type}. "
-                        "Only 'pdf' and 'image/jpeg' are supported for OCR."
-                    )
-            else:
-                text = request.data.decode("utf-8")
+                    raise ValueError(f"Unsupported input type: {request.input_type}.")
             if chunker := calls.get("chunk"):
                 chunks = await chunker.segment(text)
             else:
