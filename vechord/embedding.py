@@ -10,13 +10,15 @@ import numpy as np
 
 from vechord.log import logger
 from vechord.model import (
+    GeminiEmbeddingRequest,
     MultiModalInput,
     SparseEmbedding,
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.utils import GEMINI_EMBEDDING_RPS, VOYAGE_EMBEDDING_RPS, RateLimitTransport
+from vechord.provider import GeminiEmbeddingProvider
+from vechord.utils import VOYAGE_EMBEDDING_RPS, RateLimitTransport
 
 
 class VecType(Enum):
@@ -75,8 +77,8 @@ class SpacyDenseEmbedding(BaseEmbedding):
         return doc.vector
 
 
-class GeminiDenseEmbedding(BaseEmbedding):
-    """Gemini Dense Embedding.
+class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
+    """Gemini Dense Embedding. (limit to **8192** tokens)
 
     Args:
         model: Gemini embedding model name
@@ -88,32 +90,7 @@ class GeminiDenseEmbedding(BaseEmbedding):
         model: str = "gemini-embedding-exp-03-07",
         dim: Literal[768, 1536, 3072] = 3072,
     ):
-        self.api_key = os.environ.get("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("env GEMINI_API_KEY not set")
-
-        # this limit is 8192 tokens
-        self.limit = 10000
-        self.model = model
-        self.dim = dim
-        self.url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:embedContent"
-        )
-        self.client = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
-            timeout=httpx.Timeout(30.0, connect=10.0),
-            transport=RateLimitTransport(max_per_second=GEMINI_EMBEDDING_RPS),
-        )
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        await self.client.aclose()
+        super().__init__(model, dim)
 
     def get_dim(self) -> int:
         return self.dim
@@ -124,25 +101,17 @@ class GeminiDenseEmbedding(BaseEmbedding):
     def name(self) -> str:
         return f"gemini_emb_{self.model}_{self.dim}"
 
-    async def vectorize(
-        self, text: str, task: str = "SEMANTIC_SIMILARITY"
-    ) -> np.ndarray:
-        resp = await self.client.post(
-            self.url,
-            json={"taskType": task, "content": {"parts": [{"text": text}]}},
-        )
-        if resp.is_error:
-            raise RuntimeError(
-                f"failed to call Gemini emb: [{resp.status_code}] {resp.content}"
-            )
-        data = resp.json()
-        return np.array(data["embedding"]["values"], dtype=np.float32)
-
     async def vectorize_chunk(self, text: str) -> np.ndarray:
-        return await self.vectorize(text, task="RETRIEVAL_DOCUMENT")
+        resp = await self.query(
+            GeminiEmbeddingRequest.from_text_with_type(text, "RETRIEVAL_DOCUMENT")
+        )
+        return resp.get_emb()
 
     async def vectorize_query(self, text):
-        return await self.vectorize(text, task="RETRIEVAL_QUERY")
+        resp = await self.query(
+            GeminiEmbeddingRequest.from_text_with_type(text, "RETRIEVAL_QUERY")
+        )
+        return resp.get_emb()
 
 
 class VoyageDenseEmbedding(BaseEmbedding):

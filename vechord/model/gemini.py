@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 import msgspec
+import numpy as np
 
 
 # https://ai.google.dev/gemini-api/docs/document-processing#technical-details
@@ -85,3 +86,45 @@ class GeminiGenerateResponse(msgspec.Struct, kw_only=True):
         if not self.candidates or not self.candidates[0].content.parts:
             return ""
         return self.candidates[0].content.parts[0].text or ""
+
+
+# https://ai.google.dev/gemini-api/docs/embeddings#supported-task-types
+GeminiEmbeddingType = Literal[
+    "SEMANTIC_SIMILARITY",
+    "CLASSIFICATION",
+    "CLUSTERING",
+    "CODE_RETRIEVAL_QUERY",
+    "RETRIEVAL_DOCUMENT",
+    "RETRIEVAL_QUERY",
+    "QUESTION_ANSWERING",
+    "FACT_VERIFICATION",
+]
+
+
+class GeminiEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
+    model: Optional[str] = None
+    task_type: GeminiEmbeddingType = msgspec.field(
+        default="SEMANTIC_SIMILARITY", name="taskType"
+    )
+    content: Part
+
+    @classmethod
+    def from_text_with_type(
+        cls, text: str, task_type: GeminiEmbeddingType = "SEMANTIC_SIMILARITY"
+    ):
+        return cls(
+            content=Part(parts=[ContentPart(text=text)]),
+            task_type=task_type,
+        )
+
+
+class Embedding(msgspec.Struct):
+    values: list[float]
+
+
+class GeminiEmbeddingResponse(msgspec.Struct, kw_only=True):
+    embedding: Embedding
+
+    def get_emb(self) -> np.ndarray:
+        """Get the embedding as a numpy array."""
+        return np.array(self.embedding.values, dtype=np.float32)
