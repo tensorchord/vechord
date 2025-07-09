@@ -1,14 +1,11 @@
-import os
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Sequence
 
-import httpx
-import msgspec
 import pytrec_eval
 
-from vechord.model import GeminiGenerateRequest, GeminiGenerateResponse, RetrievedChunk
-from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
+from vechord.model import GeminiGenerateRequest, RetrievedChunk
+from vechord.provider import GeminiGenerateProvider
 
 
 class BaseEvaluator(ABC):
@@ -65,27 +62,11 @@ class BaseEvaluator(ABC):
         raise NotImplementedError
 
 
-class GeminiEvaluator(BaseEvaluator):
+class GeminiEvaluator(BaseEvaluator, GeminiGenerateProvider):
     """Evaluator using Gemini model to generate search queries."""
 
     def __init__(self, model: str = "gemini-2.5-flash"):
-        self.api_key = os.environ.get("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("env GEMINI_API_KEY not set")
-
-        self.model = model
-        self.url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent"
-        )
-        self.client = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
-            timeout=httpx.Timeout(120.0, connect=5.0),
-            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
-        )
+        super().__init__(model)
         self.prompt = """
 Given the following chunk of text and the overall document it belongs to, generate 
 the most relevant and informative search query that accurately reflects the specific 
@@ -94,17 +75,9 @@ use to find this exact information within the document. Prioritize using keyword
 and phrases directly from the chunk text. Consider the overall document context to 
 refine the query and avoid ambiguity.
 """
-        self.encoder = msgspec.json.Encoder()
-        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
 
     def name(self) -> str:
         return f"gemini_eval_{self.model}"
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        await self.client.aclose()
 
     async def produce_query(self, doc: str, chunk: str) -> str:
         contents = "\n".join(
@@ -114,13 +87,5 @@ refine the query and avoid ambiguity.
                 f"<document> {doc} </document>",
             ]
         )
-        resp = await self.client.post(
-            url=self.url,
-            content=self.encoder.encode(GeminiGenerateRequest.from_prompt(contents)),
-        )
-        if resp.is_error:
-            raise RuntimeError(
-                f"Failed to generate query with Gemini [{resp.status_code}]: {resp.text}"
-            )
-        data = self.decoder.decode(resp.content)
-        return data.get_text().strip()
+        resp = await self.query(GeminiGenerateRequest.from_prompt(contents))
+        return resp.get_text().strip()

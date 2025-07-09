@@ -1,4 +1,6 @@
 from vechord.model.gemini import (
+    GeminiEmbeddingRequest,
+    GeminiEmbeddingResponse,
     GeminiGenerateRequest,
     GeminiGenerateResponse,
     GeminiMimeType,
@@ -21,6 +23,8 @@ from vechord.model.web import InputType, ResourceRequest, RunAck, RunRequest
 __all__ = [
     "Document",
     "Entity",
+    "GeminiEmbeddingRequest",
+    "GeminiEmbeddingResponse",
     "GeminiGenerateRequest",
     "GeminiGenerateResponse",
     "GeminiMimeType",

@@ -1,11 +1,7 @@
-import os
 from abc import ABC, abstractmethod
 
-import httpx
-import msgspec
-
-from vechord.model import GeminiGenerateRequest, GeminiGenerateResponse
-from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
+from vechord.model import GeminiGenerateRequest
+from vechord.provider import GeminiGenerateProvider
 
 
 class BaseAugmenter(ABC):
@@ -31,7 +27,7 @@ class BaseAugmenter(ABC):
         raise NotImplementedError
 
 
-class GeminiAugmenter(BaseAugmenter):
+class GeminiAugmenter(BaseAugmenter, GeminiGenerateProvider):
     """Gemini Augmenter.
 
     Context caching is only available for stable models with fixed versions.
@@ -39,32 +35,7 @@ class GeminiAugmenter(BaseAugmenter):
     """
 
     def __init__(self, model: str = "gemini-2.5-flash"):
-        self.api_key = os.environ.get("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("env GEMINI_API_KEY not set")
-
-        self.model = model
-        self.min_token = 32768
-        self.url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent"
-        )
-        self.client = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
-            timeout=httpx.Timeout(120.0, connect=5.0),
-            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
-        )
-        self.encoder = msgspec.json.Encoder()
-        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        await self.client.aclose()
+        super().__init__(model)
 
     def name(self) -> str:
         return f"gemini_augment_{self.model}"
@@ -74,16 +45,8 @@ class GeminiAugmenter(BaseAugmenter):
         for chunk in chunks:
             context = prompt.format(chunk=chunk)
             context = f"<document>\n{doc}\n</document>\n" + context
-            resp = await self.client.post(
-                url=self.url,
-                content=self.encoder.encode(GeminiGenerateRequest.from_prompt(context)),
-            )
-            if resp.is_error:
-                raise RuntimeError(
-                    f"Failed to augment with Gemini [{resp.status_code}]: {resp.text}"
-                )
-            data = self.decoder.decode(resp.content)
-            res.append(data.get_text().strip())
+            resp = await self.query(GeminiGenerateRequest.from_prompt(context))
+            res.append(resp.get_text().strip())
         return res
 
     async def augment_context(self, doc: str, chunks: list[str]) -> list[str]:
@@ -126,13 +89,5 @@ class GeminiAugmenter(BaseAugmenter):
             "coherence, avoiding unnecessary repetition."
             f"\n<document>{doc}</document>\n"
         )
-        resp = await self.client.post(
-            url=self.url,
-            content=self.encoder.encode(GeminiGenerateRequest.from_prompt(prompt)),
-        )
-        if resp.is_error:
-            raise RuntimeError(
-                f"Failed to augment with Gemini [{resp.status_code}]: {resp.text}"
-            )
-        data = self.decoder.decode(resp.content)
-        return data.get_text().strip()
+        resp = await self.query(GeminiGenerateRequest.from_prompt(prompt))
+        return resp.get_text().strip()

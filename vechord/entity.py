@@ -1,16 +1,14 @@
-import os
 from abc import ABC, abstractmethod
 
-import httpx
 import msgspec
 
+from vechord.errors import DecodeStructuredOutputError
 from vechord.model import (
     Entity,
     GeminiGenerateRequest,
-    GeminiGenerateResponse,
     Relation,
 )
-from vechord.utils import GEMINI_GENERATE_RPS, RateLimitTransport
+from vechord.provider import GeminiGenerateProvider
 
 
 class BaseEntityRecognizer(ABC):
@@ -126,7 +124,7 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
         return ents, relations
 
 
-class GeminiEntityRecognizer(BaseEntityRecognizer):
+class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     """Entity recognizer using Gemini API.
 
     Since Gemini SDK doesn't support passing JSON schema directly, we have to
@@ -136,47 +134,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
     """
 
     def __init__(self, model: str = "gemini-2.5-flash"):
-        self.model = model
-        self.api_key = os.environ.get("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError("env GEMINI_API_KEY not set")
-
-        self.url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.model}:generateContent"
-        )
-        self.client = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.api_key,
-            },
-            timeout=httpx.Timeout(30.0, connect=5.0),
-            transport=RateLimitTransport(max_per_second=GEMINI_GENERATE_RPS),
-        )
-        self.encoder = msgspec.json.Encoder()
-        self.decoder = msgspec.json.Decoder(GeminiGenerateResponse)
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        await self.client.aclose()
-
-    async def query(self, prompt: str, schema: type):
-        json_schema = msgspec.json.schema(schema)
-        resp = await self.client.post(
-            url=self.url,
-            content=self.encoder.encode(
-                GeminiGenerateRequest.from_prompt_structure_response(
-                    prompt=prompt, schema=json_schema
-                )
-            ),
-        )
-        if resp.is_error:
-            raise RuntimeError(
-                f"Failed to recognize with Gemini [{resp.status_code}]: {resp.text}"
-            )
-        return resp
+        super().__init__(model)
 
     async def recognize(self, text) -> list[Entity]:
         prompt = (
@@ -187,12 +145,17 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the entity in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = await self.query(prompt=prompt.format(text=text), schema=list[Entity])
+        resp = await self.query(
+            GeminiGenerateRequest.from_prompt_structure_response(
+                prompt=prompt.format(text), schema=msgspec.json.schema(list[Entity])
+            )
+        )
         try:
-            data = self.decoder.decode(resp.content)
-            ents = msgspec.json.decode(data.get_text(), type=list[Entity])
+            ents = msgspec.json.decode(resp.get_text(), type=list[Entity])
         except (msgspec.DecodeError, KeyError) as err:
-            raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
+            raise DecodeStructuredOutputError(
+                "Failed to decode Gemini response"
+            ) from err
         return ents
 
     async def recognize_with_relations(
@@ -207,12 +170,18 @@ class GeminiEntityRecognizer(BaseEntityRecognizer):
             "- description: a brief description of the relation in the current context "
             "\n<document>\n{text}\n</document>\n"
         )
-        resp = await self.query(prompt=prompt.format(text=text), schema=list[Relation])
+        resp = await self.query(
+            GeminiGenerateRequest.from_prompt_structure_response(
+                prompt=prompt.format(text=text),
+                schema=msgspec.json.schema(list[Relation]),
+            )
+        )
         try:
-            data = self.decoder.decode(resp.content)
-            rels = msgspec.json.decode(data.get_text(), type=list[Relation])
+            rels = msgspec.json.decode(resp.get_text(), type=list[Relation])
         except (msgspec.DecodeError, KeyError) as err:
-            raise RuntimeError(f"Failed to decode Gemini response: {err}") from err
+            raise DecodeStructuredOutputError(
+                "Failed to decode Gemini response"
+            ) from err
         ents: dict[str, Entity] = {}
         for rel in rels:
             ents[rel.source.text] = rel.source
