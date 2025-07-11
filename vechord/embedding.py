@@ -141,7 +141,7 @@ class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
         )
         return resp.get_emb()
 
-    async def vectorize_query(self, text):
+    async def vectorize_query(self, text: str) -> np.ndarray:
         resp = await self.query(JinaEmbeddingRequest.from_text(text, "retrieval.query"))
         return resp.get_emb()
 
