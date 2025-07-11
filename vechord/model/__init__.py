@@ -14,7 +14,6 @@ from vechord.model.internal import (
 )
 from vechord.model.jina import JinaEmbeddingRequest, JinaEmbeddingResponse
 from vechord.model.voyage import (
-    MultiModalInput,
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
@@ -32,7 +31,6 @@ __all__ = [
     "InputType",
     "JinaEmbeddingRequest",
     "JinaEmbeddingResponse",
-    "MultiModalInput",
     "Relation",
     "ResourceRequest",
     "RetrievedChunk",
