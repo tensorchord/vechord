@@ -11,6 +11,7 @@ from vechord.client import VechordClient, limit_to_transaction_buffer_conn
 from vechord.embedding import (
     BaseEmbedding,
     GeminiDenseEmbedding,
+    JinaDenseEmbedding,
     OpenAIDenseEmbedding,
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
@@ -67,6 +68,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
     },
     "text-emb": {
         "gemini": GeminiDenseEmbedding,
+        "jina": JinaDenseEmbedding,
         "openai": OpenAIDenseEmbedding,
         "voyage": VoyageDenseEmbedding,
     },

@@ -12,6 +12,7 @@ from vechord.model.internal import (
     RetrievedChunk,
     SparseEmbedding,
 )
+from vechord.model.jina import JinaEmbeddingRequest, JinaEmbeddingResponse
 from vechord.model.voyage import (
     MultiModalInput,
     VoyageEmbeddingRequest,
@@ -29,6 +30,8 @@ __all__ = [
     "GeminiGenerateResponse",
     "GeminiMimeType",
     "InputType",
+    "JinaEmbeddingRequest",
+    "JinaEmbeddingResponse",
     "MultiModalInput",
     "Relation",
     "ResourceRequest",

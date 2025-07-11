@@ -1,7 +1,6 @@
 import dataclasses
 import enum
 import inspect
-import sys
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from functools import partial
@@ -24,15 +23,12 @@ from typing import (
 )
 from uuid import UUID
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
 import msgspec
 import numpy as np
 from psycopg.types.json import Jsonb
 from uuid_utils.compat import uuid7
+
+from vechord.typing import Self
 
 __all__ = [
     "DefaultDocument",

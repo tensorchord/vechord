@@ -4,6 +4,8 @@ from typing import Any, Literal, Optional
 import msgspec
 import numpy as np
 
+from vechord.typing import Self
+
 
 # https://ai.google.dev/gemini-api/docs/document-processing#technical-details
 # https://ai.google.dev/gemini-api/docs/image-understanding#supported-formats
@@ -52,8 +54,10 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
     )
 
     @classmethod
-    def from_prompt_with_data(cls, prompt: str, mime_type: GeminiMimeType, data: bytes):
-        return cls(
+    def from_prompt_with_data(
+        cls, prompt: str, mime_type: GeminiMimeType, data: bytes
+    ) -> Self:
+        return GeminiGenerateRequest(
             contents=Part(
                 [
                     ContentPart(text=prompt),
@@ -63,12 +67,14 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
         )
 
     @classmethod
-    def from_prompt(cls, prompt: str):
-        return cls(contents=Part(parts=[ContentPart(text=prompt)]))
+    def from_prompt(cls, prompt: str) -> Self:
+        return GeminiGenerateRequest(contents=Part(parts=[ContentPart(text=prompt)]))
 
     @classmethod
-    def from_prompt_structure_response(cls, prompt: str, schema: dict[str, Any]):
-        return cls(
+    def from_prompt_structure_response(
+        cls, prompt: str, schema: dict[str, Any]
+    ) -> Self:
+        return GeminiGenerateRequest(
             contents=Part(parts=[ContentPart(text=prompt)]),
             generation_config=GenerationConfig(response_json_schema=schema),
         )
@@ -111,8 +117,8 @@ class GeminiEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
     @classmethod
     def from_text_with_type(
         cls, text: str, task_type: GeminiEmbeddingType = "SEMANTIC_SIMILARITY"
-    ):
-        return cls(
+    ) -> Self:
+        return GeminiEmbeddingRequest(
             content=Part(parts=[ContentPart(text=text)]),
             task_type=task_type,
         )
@@ -126,5 +132,5 @@ class GeminiEmbeddingResponse(msgspec.Struct, kw_only=True):
     embedding: Embedding
 
     def get_emb(self) -> np.ndarray:
-        """Get the embedding as a numpy array."""
+        """Get the first embedding as a numpy array."""
         return np.array(self.embedding.values, dtype=np.float32)

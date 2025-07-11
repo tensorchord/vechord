@@ -1,20 +1,17 @@
 import asyncio
-import sys
 from typing import Any
 
-if sys.version_info >= (3, 11):
-    from typing import Self
-else:
-    from typing_extensions import Self
-
-
 import httpx
+
+from vechord.typing import Self
 
 # https://ai.google.dev/gemini-api/docs/rate-limits#tier-1
 GEMINI_GENERATE_RPS = 16.66
 GEMINI_EMBEDDING_RPS = 0.6
 # https://docs.voyageai.com/docs/rate-limits
 VOYAGE_EMBEDDING_RPS = 33.33
+# https://jina.ai/api-dashboard/rate-limit
+JINA_EMBEDDING_RPS = 8.33
 
 
 class RateLimitTransport(httpx.AsyncHTTPTransport):
