@@ -18,6 +18,8 @@ pip install vechord[openai,spacy,cohere]
 - Embedding
     - {py:class}`~vechord.embedding.GeminiDenseEmbedding`: Gemini embedding
     - {py:class}`~vechord.embedding.OpenAIDenseEmbedding`: OpenAI embedding
+    - {py:class}`~vechord.embedding.JinaDenseEmbedding`: JinaAI embedding
+    - {py:class}`~vechord.embedding.VoyageDenseEmbedding`: VoyageAI embedding
     - {py:class}`~vechord.embedding.SpacyDenseEmbedding`: Spacy embedding
 - Evaluate
     - {py:class}`~vechord.evaluate.GeminiEvaluator`: Gemini based evaluator
@@ -25,5 +27,5 @@ pip install vechord[openai,spacy,cohere]
     - {py:class}`~vechord.extract.SimpleExtractor`: Simple extractor
     - {py:class}`~vechord.extract.GeminiExtractor`: Gemini extractor
 - Rerank
-    - {py:class}`~vechord.rerank.CohereReranker`: Gemini based reranker
+    - {py:class}`~vechord.rerank.CohereReranker`: Cohere reranker
     - {py:class}`~vechord.rerank.ReciprocalRankFusion`: fuse function for hybrid retrieval

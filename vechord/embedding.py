@@ -11,13 +11,14 @@ import numpy as np
 from vechord.log import logger
 from vechord.model import (
     GeminiEmbeddingRequest,
+    JinaEmbeddingRequest,
     MultiModalInput,
     SparseEmbedding,
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.provider import GeminiEmbeddingProvider
+from vechord.provider import GeminiEmbeddingProvider, JinaEmbeddingProvider
 from vechord.utils import VOYAGE_EMBEDDING_RPS, RateLimitTransport
 
 
@@ -78,7 +79,7 @@ class SpacyDenseEmbedding(BaseEmbedding):
 
 
 class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
-    """Gemini Dense Embedding. (limit to **8192** tokens)
+    """Gemini Dense Embedding. (limit to **8,192** tokens)
 
     Args:
         model: Gemini embedding model name
@@ -111,6 +112,37 @@ class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
         resp = await self.query(
             GeminiEmbeddingRequest.from_text_with_type(text, "RETRIEVAL_QUERY")
         )
+        return resp.get_emb()
+
+
+class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
+    """Jina Dense Embedding. (limit to **32,768** tokens for v4, **8,192** for v3)
+
+    Args:
+        model: Jina embedding model name, could be "jina-embeddings-v4" or "jina-embeddings-v3"
+        dim: embedding dimension, up to 2048
+    """
+
+    def __init__(self, model: str = "jina-embeddings-v4", dim: int = 2048):
+        super().__init__(model, dim)
+
+    def get_dim(self) -> int:
+        return self.dim
+
+    def vec_type(self) -> VecType:
+        return VecType.DENSE
+
+    def name(self) -> str:
+        return f"jina_emb_{self.model}_{self.dim}"
+
+    async def vectorize_chunk(self, text: str) -> np.ndarray:
+        resp = await self.query(
+            JinaEmbeddingRequest.from_text(text, "retrieval.passage")
+        )
+        return resp.get_emb()
+
+    async def vectorize_query(self, text):
+        resp = await self.query(JinaEmbeddingRequest.from_text(text, "retrieval.query"))
         return resp.get_emb()
 
 

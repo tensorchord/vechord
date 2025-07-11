@@ -67,6 +67,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
     },
     "text-emb": {
         "gemini": GeminiDenseEmbedding,
+        "jina": VoyageDenseEmbedding,
         "openai": OpenAIDenseEmbedding,
         "voyage": VoyageDenseEmbedding,
     },

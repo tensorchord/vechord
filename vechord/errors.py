@@ -16,3 +16,7 @@ class HTTPCallError(Exception):
 
 class DecodeStructuredOutputError(Exception):
     """Raised when decoding structured output fails."""
+
+
+class UnexpectedResponseError(Exception):
+    """Raised when the HTTP response is not as expected."""
