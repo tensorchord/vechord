@@ -1,7 +1,12 @@
+import base64
 import re
 from typing import Literal, Optional
 
 import msgspec
+import numpy as np
+
+from vechord.errors import UnexpectedResponseError
+from vechord.typing import Self
 
 
 def pascal_to_snake(s: str) -> str:
@@ -18,15 +23,38 @@ class VoyageEmbedding(msgspec.Struct, kw_only=True):
 class VoyageEmbeddingResponse(msgspec.Struct, kw_only=True):
     data: list[VoyageEmbedding]
 
+    def get_emb(self) -> np.ndarray:
+        """Get the first embedding as a numpy array."""
+        if not self.data or not self.data[0].embedding:
+            raise UnexpectedResponseError("empty embedding data")
+        emb = self.data[0].embedding
+        if isinstance(emb, list):
+            return np.array(emb, dtype=np.float32)
+        return np.frombuffer(emb, dtype=np.float32)
+
+
+VOYAGE_INPUT_TYPE = Literal["query", "document"]
+
 
 class VoyageEmbeddingRequest(msgspec.Struct, kw_only=True):
     model: str
     input_text: str | list[str] = msgspec.field(name="input")
-    input_type: Literal["query", "document"] = "document"
+    input_type: VOYAGE_INPUT_TYPE = "document"
     truncation: bool = True
     output_dimension: int
     output_dtype: Literal["float", "int8", "uint8", "binary", "ubinary"] = "float"
     encoding_format: Optional[Literal["base64"]] = "base64"
+
+    @classmethod
+    def from_text(
+        cls, text: str, input_type: VOYAGE_INPUT_TYPE, model: str, dim: int
+    ) -> Self:
+        return VoyageEmbeddingRequest(
+            model=model,
+            input_text=text,
+            input_type=input_type,
+            output_dimension=dim,
+        )
 
 
 class Text(msgspec.Struct, tag=pascal_to_snake):
@@ -48,6 +76,32 @@ class MultiModalInput(msgspec.Struct, tag=pascal_to_snake):
 class VoyageMultiModalEmbeddingRequest(msgspec.Struct, kw_only=True):
     model: str
     inputs: list[MultiModalInput]
-    input_type: Literal["query", "document"] = "document"
+    input_type: VOYAGE_INPUT_TYPE = "document"
     truncation: bool = True
     encoding_format: Optional[Literal["base64"]] = "base64"
+
+    @classmethod
+    def build(
+        cls,
+        text: Optional[str],
+        image_url: Optional[str],
+        image: Optional[bytes],
+        model: str,
+        input_type: VOYAGE_INPUT_TYPE,
+    ) -> Self:
+        contents = []
+        if text:
+            contents.append(Text(text=text))
+        if image_url:
+            contents.append(ImageURL(image_url=image_url))
+        if image:
+            contents.append(
+                ImageBase64(
+                    image_base64=f"data:image/jpeg;base64,{base64.b64encode(image).decode('utf-8')}",
+                )
+            )
+        return VoyageMultiModalEmbeddingRequest(
+            model=model,
+            inputs=[MultiModalInput(content=contents)],
+            input_type=input_type,
+        )
