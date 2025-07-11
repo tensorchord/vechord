@@ -20,7 +20,7 @@ from vechord.spec import (
 
 DEFAULT_TOKENIZER = ("bert_base_uncased", "wiki_tocken")
 
-select_transaction_buffer_conn: ContextVar[AsyncConnection] = ContextVar(
+select_transaction_buffer_conn = ContextVar[Optional[AsyncConnection]](
     "select_transaction_buffer_conn", default=None
 )
 

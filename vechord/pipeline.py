@@ -60,7 +60,7 @@ class SearchOption:
         )
 
 
-PROVIDER_MAP = {
+PROVIDER_MAP: dict[str, dict[str, Any]] = {
     "chunk": {
         "regex": RegexChunker,
         "gemini": GeminiChunker,

@@ -93,7 +93,7 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
         )
         self.model = model
 
-    def recognize(self, text):
+    def recognize(self, text) -> list[Entity]:
         doc = self.nlp(text)
         return [Entity(text=ent.text, label=ent.label_) for ent in doc.ents]
 
