@@ -7,7 +7,7 @@ from vechord.errors import UnexpectedResponseError
 from vechord.typing import Self
 
 # https://jina.ai/api-dashboard/embedding
-JinaEmebeddingType = Literal[
+JinaEmbeddingType = Literal[
     "retrieval.query",
     "retrieval.passage",
     "code.query",
@@ -26,12 +26,12 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
     model: Literal["jina-embeddings-v4", "jina-embeddings-v3"]
     dimensions: int = 2048
     truncate: bool
-    task: JinaEmebeddingType
+    task: JinaEmbeddingType
     embedding_type: Literal["binary", "ubinary", "base64", "float"] = "float"
     input_content: list[JinaInput] = msgspec.field(name="input")
 
     @classmethod
-    def from_text(cls, text: str, task: JinaEmebeddingType) -> Self:
+    def from_text(cls, text: str, task: JinaEmbeddingType) -> Self:
         return JinaEmbeddingRequest(
             model="jina-embeddings-v4",
             truncate=True,
@@ -54,4 +54,7 @@ class JinaEmbeddingResponse(msgspec.Struct, kw_only=True):
         """Get the first embedding as a numpy array."""
         if not self.data or not self.data[0].embedding:
             raise UnexpectedResponseError("empty embedding data")
-        return np.frombuffer(self.data[0].embedding, dtype=np.float32)
+        emb = self.data[0].embedding
+        if isinstance(emb, list):
+            return np.array(emb, dtype=np.float32)
+        return np.frombuffer(emb, dtype=np.float32)
