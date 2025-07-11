@@ -31,9 +31,9 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
     input_content: list[JinaInput] = msgspec.field(name="input")
 
     @classmethod
-    def from_text(cls, text: str, task: JinaEmbeddingType) -> Self:
+    def from_text(cls, text: str, task: JinaEmbeddingType, model: str) -> Self:
         return JinaEmbeddingRequest(
-            model="jina-embeddings-v4",
+            model=model,
             truncate=True,
             task=task,
             embedding_type="base64",

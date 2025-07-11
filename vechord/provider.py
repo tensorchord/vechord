@@ -12,11 +12,13 @@ from vechord.model import (
     GeminiGenerateResponse,
     JinaEmbeddingRequest,
     JinaEmbeddingResponse,
+    VoyageEmbeddingResponse,
 )
 from vechord.utils import (
     GEMINI_EMBEDDING_RPS,
     GEMINI_GENERATE_RPS,
     JINA_EMBEDDING_RPS,
+    VOYAGE_EMBEDDING_RPS,
     RateLimitTransport,
 )
 
@@ -133,5 +135,35 @@ class JinaEmbeddingProvider(BaseProvider):
         if response.is_error:
             raise HTTPCallError(
                 "Failed to query Jina embedding", response.status_code, response.text
+            )
+        return self.decoder.decode(response.content)
+
+
+class VoyageEmbeddingProvider(BaseProvider):
+    """Voyage Embedding Provider."""
+
+    PROVIDER_NAME = "VOYAGE"
+
+    def __init__(self, model: str = "voyage-3.5", dim: int = 1024):
+        super().__init__(model)
+        self.dim = dim
+        self.client = httpx.AsyncClient(
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            timeout=httpx.Timeout(60.0, connect=10.0),
+            transport=RateLimitTransport(max_per_second=VOYAGE_EMBEDDING_RPS),
+        )
+        self.url = "https://api.voyageai.com/v1/embeddings"
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(VoyageEmbeddingResponse)
+
+    async def query(self, req: GeminiEmbeddingRequest) -> VoyageEmbeddingResponse:
+        """Query the Voyage embedding model with a request."""
+        response = await self.client.post(self.url, content=self.encoder.encode(req))
+        if response.is_error:
+            raise HTTPCallError(
+                "Failed to query Voyage embedding", response.status_code, response.text
             )
         return self.decoder.decode(response.content)

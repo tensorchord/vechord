@@ -1,4 +1,3 @@
-import base64
 import os
 from abc import ABC, abstractmethod
 from enum import Enum, auto
@@ -12,14 +11,16 @@ from vechord.log import logger
 from vechord.model import (
     GeminiEmbeddingRequest,
     JinaEmbeddingRequest,
-    MultiModalInput,
     SparseEmbedding,
     VoyageEmbeddingRequest,
-    VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.provider import GeminiEmbeddingProvider, JinaEmbeddingProvider
-from vechord.utils import VOYAGE_EMBEDDING_RPS, RateLimitTransport
+from vechord.model.voyage import VOYAGE_INPUT_TYPE
+from vechord.provider import (
+    GeminiEmbeddingProvider,
+    JinaEmbeddingProvider,
+    VoyageEmbeddingProvider,
+)
 
 
 class VecType(Enum):
@@ -137,42 +138,22 @@ class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
 
     async def vectorize_chunk(self, text: str) -> np.ndarray:
         resp = await self.query(
-            JinaEmbeddingRequest.from_text(text, "retrieval.passage")
+            JinaEmbeddingRequest.from_text(text, "retrieval.passage", self.model)
         )
         return resp.get_emb()
 
     async def vectorize_query(self, text: str) -> np.ndarray:
-        resp = await self.query(JinaEmbeddingRequest.from_text(text, "retrieval.query"))
+        resp = await self.query(
+            JinaEmbeddingRequest.from_text(text, "retrieval.query", self.model)
+        )
         return resp.get_emb()
 
 
-class VoyageDenseEmbedding(BaseEmbedding):
+class VoyageDenseEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
     def __init__(
         self, model: str = "voyage-3.5", dim: Literal[256, 512, 1024, 2048] = 1024
     ):
-        self.api_key = os.environ.get("VOYAGE_API_KEY")
-        if not self.api_key:
-            raise ValueError("env VOYAGE_API_KEY not set")
-
-        self.model = model
-        self.dim = dim
-        self.url = "https://api.voyageai.com/v1/embeddings"
-        self.client = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            },
-            timeout=httpx.Timeout(30.0, connect=10.0),
-            transport=RateLimitTransport(max_per_second=VOYAGE_EMBEDDING_RPS),
-        )
-        self.decoder = msgspec.json.Decoder(type=VoyageEmbeddingResponse)
-        self.encoder = msgspec.json.Encoder()
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, _exc_type, _exc_value, _traceback):
-        await self.client.aclose()
+        super().__init__(model, dim)
 
     def name(self):
         return f"voyage_emb_{self.model}_{self.dim}"
@@ -183,33 +164,21 @@ class VoyageDenseEmbedding(BaseEmbedding):
     def vec_type(self) -> VecType:
         return VecType.DENSE
 
-    async def vectorize(
-        self, text: str, input_type: Literal["document", "query"] = "document"
-    ) -> np.ndarray:
-        resp = await self.client.post(
-            url=self.url,
-            content=self.encoder.encode(
-                VoyageEmbeddingRequest(
-                    model=self.model,
-                    input_text=text,
-                    input_type=input_type,
-                    output_dimension=self.dim,
-                )
-            ),
-        )
-        if resp.is_error:
-            raise RuntimeError(
-                f"failed to call Voyage emb: [{resp.status_code}] {resp.content}"
-            )
-        body = self.decoder.decode(resp.content)
-        emb = np.frombuffer(body.data[0].embedding, dtype=np.float32)
-        return emb
-
     async def vectorize_chunk(self, text):
-        return await self.vectorize(text, "document")
+        resp = await self.query(
+            VoyageEmbeddingRequest.from_text(
+                text=text, input_type="document", model=self.model, dim=self.dim
+            )
+        )
+        return resp.get_emb()
 
     async def vectorize_query(self, text):
-        return await self.vectorize(text, "query")
+        resp = await self.query(
+            VoyageEmbeddingRequest.from_text(
+                text=text, input_type="query", model=self.model, dim=self.dim
+            )
+        )
+        return resp.get_emb()
 
 
 class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
@@ -228,7 +197,7 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
     def name(self):
         return f"voyage_multimodal_emb_{self.model}_{self.dim}"
 
-    async def vectorize(self, text, input_type: Literal["document", "query"] = "query"):
+    async def vectorize(self, text, input_type: VOYAGE_INPUT_TYPE = "query"):
         return await self.vectorize_multimodal(text=text, input_type=input_type)
 
     async def vectorize_multimodal(
@@ -236,43 +205,23 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
         image: Optional[bytes] = None,
         text: Optional[str] = None,
         image_url: Optional[str] = None,
-        input_type: Literal["query", "document"] = "document",
+        input_type: VOYAGE_INPUT_TYPE = "document",
     ):
         if not (image or text or image_url):
             raise ValueError(
                 "At least one of image, text, or image_url must be provided"
             )
 
-        input_content = []
-        if text:
-            input_content.append({"type": "text", "text": text})
-        if image:
-            input_content.append(
-                {
-                    "type": "image_base64",
-                    "image_base64": f"data:image/jpeg;base64,{base64.b64encode(image).decode('utf-8')}",
-                }
+        resp = await self.query(
+            VoyageMultiModalEmbeddingRequest.build(
+                text=text,
+                image=image,
+                image_url=image_url,
+                input_type=input_type,
+                model=self.model,
             )
-        if image_url:
-            input_content.append({"type": "image_url", "image_url": image_url})
-
-        resp = await self.client.post(
-            url=self.url,
-            content=self.encoder.encode(
-                VoyageMultiModalEmbeddingRequest(
-                    model=self.model,
-                    inputs=[MultiModalInput(content=input_content)],
-                    input_type=input_type,
-                )
-            ),
         )
-        if resp.is_error:
-            raise RuntimeError(
-                f"failed to call Voyage multimodal emb: [{resp.status_code}] {resp.content}"
-            )
-        body = self.decoder.decode(resp.content)
-        emb = np.frombuffer(body.data[0].embedding, dtype=np.float32)
-        return emb
+        return resp.get_emb()
 
     async def vectorize_multimodal_chunk(
         self,
