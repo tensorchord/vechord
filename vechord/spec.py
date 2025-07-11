@@ -323,8 +323,18 @@ def get_first_type_from_optional(typ: Type) -> Type:
     raise ValueError(f"no non-None type in {typ}")
 
 
+def get_first_arg(typ: Type) -> Type:
+    """Get the first argument of a type, if it has one."""
+    args = get_args(typ)
+    if not args:
+        raise ValueError(f"{typ} has no arguments")
+    return args[0]
+
+
 def is_list_of_vector_type(typ: Type) -> bool:
-    return get_origin(typ) is list and issubclass(typ.__args__[0].__class__, VectorMeta)
+    return get_origin(typ) is list and issubclass(
+        get_first_arg(typ).__class__, VectorMeta
+    )
 
 
 def py_type_to_psql_schema(typ) -> str:
@@ -332,15 +342,14 @@ def py_type_to_psql_schema(typ) -> str:
         typ = get_first_type_from_optional(typ)
 
     if get_origin(typ) is Annotated:
-        meta = typ.__metadata__
-        origin = typ.__origin__
+        origin, *meta = get_args(typ)
         schema = [py_type_to_psql_schema(origin)]
         for m in meta:
             if inspect.isclass(m) and issubclass(m, ForeignKey):
                 schema.append(m.schema())
         return " ".join(schema)
     elif get_origin(typ) is list:
-        return f"{py_type_to_psql_schema(typ.__args__[0])}[]"
+        return f"{py_type_to_psql_schema(get_first_arg(typ))}[]"
     if isinstance(typ, VechordType):
         return typ.schema()
     if typ in TYPE_TO_PSQL:
@@ -353,9 +362,9 @@ def py_type_to_psql_type(typ) -> str:
         typ = get_first_type_from_optional(typ)
 
     if get_origin(typ) is Annotated:
-        return py_type_to_psql_type(typ.__origin__)
+        return py_type_to_psql_type(get_first_arg(typ))
     elif get_origin(typ) is list:
-        return f"{py_type_to_psql_type(typ.__args__[0])}[]"
+        return f"{py_type_to_psql_type(get_first_arg(typ))}[]"
     if isinstance(typ, VechordType):
         return typ.psql_type()
     if typ in TYPE_TO_PSQL:
@@ -523,7 +532,7 @@ class Table(Storage):
             if issubclass(typ.__class__, VectorMeta):
                 return IndexColumn(name, VectorIndex())
             elif get_origin(typ) is Annotated and issubclass(
-                typ.__origin__.__class__, VectorMeta
+                get_first_arg(typ).__class__, VectorMeta
             ):
                 for m in typ.__metadata__:
                     if isinstance(m, VectorIndex):
@@ -537,7 +546,7 @@ class Table(Storage):
             if is_list_of_vector_type(typ):
                 return IndexColumn(name, MultiVectorIndex())
             elif get_origin(typ) is Annotated:
-                inner_type = typ.__origin__
+                inner_type = get_first_arg(typ)
                 if is_list_of_vector_type(inner_type):
                     for m in typ.__metadata__:
                         if isinstance(m, MultiVectorIndex):
@@ -550,7 +559,7 @@ class Table(Storage):
         for name, typ in get_type_hints(cls, include_extras=True).items():
             if typ is Keyword:
                 return IndexColumn(name, KeywordIndex())
-            elif get_origin(typ) is Annotated and typ.__origin__ is Keyword:
+            elif get_origin(typ) is Annotated and get_first_arg(typ) is Keyword:
                 for m in typ.__metadata__:
                     if isinstance(m, KeywordIndex):
                         return IndexColumn(name, m)
@@ -586,8 +595,8 @@ class Table(Storage):
         for _, typ in get_type_hints(cls, include_extras=True).items():
             if typ is Keyword:
                 return typ._model
-            elif get_origin(typ) is Annotated and typ.__origin__ is Keyword:
-                return typ.__origin__._model
+            elif get_origin(typ) is Annotated and get_first_arg(typ) is Keyword:
+                return get_first_arg(typ)._model
         return None
 
     @classmethod

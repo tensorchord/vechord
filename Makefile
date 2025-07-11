@@ -5,6 +5,7 @@ lint:
 
 typecheck:
 	@uv run -- mypy --non-interactive --install-types ${PY_SOURCE}
+	@uv run -- ty check ${PY_SOURCE}
 
 format:
 	@uv run -- ruff check --fix ${PY_SOURCE}

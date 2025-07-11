@@ -64,6 +64,7 @@ dev = [
     "pdm-backend>=2.4.3",
     "pytest>=8.3.5",
     "ruff>=0.9.1",
+    "ty>=0.0.1a14",
 ]
 doc = [
     "furo>=2024.8.6",
@@ -113,6 +114,11 @@ module = [
   "pypdfium2",
 ]
 ignore_missing_imports = true
+
+[tool.ty.src]
+include = ["vechord", "tests"]
+[tool.ty.rules]
+unresolved-attribute = "ignore"  # https://github.com/astral-sh/ty/issues/133
 
 [tool.pdm]
 distribution = true
