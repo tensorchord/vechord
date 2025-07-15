@@ -6,6 +6,7 @@ from vechord.errors import DecodeStructuredOutputError
 from vechord.model import (
     Entity,
     GeminiGenerateRequest,
+    GeminiMimeType,
     Relation,
 )
 from vechord.provider import GeminiGenerateProvider
@@ -158,6 +159,39 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
             ) from err
         return ents
 
+    def decode_relations(self, text: str) -> tuple[list[Entity], list[Relation]]:
+        try:
+            rels = msgspec.json.decode(text, type=list[Relation])
+        except (msgspec.DecodeError, KeyError) as err:
+            raise DecodeStructuredOutputError(
+                "Failed to decode Gemini response"
+            ) from err
+        ents: dict[str, Entity] = {}
+        for rel in rels:
+            ents[rel.source.text] = rel.source
+            ents[rel.target.text] = rel.target
+        return list(ents.values()), rels
+
+    async def recognize_image(self, img: bytes) -> tuple[list[Entity], list[Relation]]:
+        """Recognize entities & relations from the image."""
+        prompt = (
+            "Given the image, extract the meaningful entities and their relations "
+            "between them. Return a list of relations with source and target "
+            "entities in JSON format like: "
+            "- source: the source entity (text, label and description) "
+            "- target: the target entity (text, label and description) "
+            "- description: a brief description of the relation in the current context "
+        )
+        resp = await self.query(
+            GeminiGenerateRequest.from_prompt_data_structure_resp(
+                prompt=prompt,
+                mime_type=GeminiMimeType.JPEG,
+                data=img,
+                schema=msgspec.json.schema(list[Relation]),
+            )
+        )
+        return self.decode_relations(resp.get_text())
+
     async def recognize_with_relations(
         self, text
     ) -> tuple[list[Entity], list[Relation]]:
@@ -176,17 +210,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
                 schema=msgspec.json.schema(list[Relation]),
             )
         )
-        try:
-            rels = msgspec.json.decode(resp.get_text(), type=list[Relation])
-        except (msgspec.DecodeError, KeyError) as err:
-            raise DecodeStructuredOutputError(
-                "Failed to decode Gemini response"
-            ) from err
-        ents: dict[str, Entity] = {}
-        for rel in rels:
-            ents[rel.source.text] = rel.source
-            ents[rel.target.text] = rel.target
-        return list(ents.values()), rels
+        return self.decode_relations(resp.get_text())
 
 
 if __name__ == "__main__":

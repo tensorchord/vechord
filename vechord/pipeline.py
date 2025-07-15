@@ -1,6 +1,5 @@
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
-from dataclasses import dataclass
 from os import environ
 from typing import TYPE_CHECKING, Annotated, Any, Optional
 
@@ -16,6 +15,7 @@ from vechord.embedding import (
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
 )
+from vechord.errors import RequestError
 from vechord.extract import GeminiExtractor
 from vechord.model import InputType, ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
@@ -32,25 +32,32 @@ if TYPE_CHECKING:
     from vechord.registry import VechordRegistry
 
 
+class GraphIndex(msgspec.Struct):
+    enable_relation: bool = True
+
+
 class IndexOption:
-    def __init__(self, vector=None, keyword=None):
+    def __init__(self, vector=None, keyword=None, graph=None):
         self.vector = (
             msgspec.convert(vector, VectorIndex) if vector is not None else None
         )
         self.keyword = (
             msgspec.convert(keyword, KeywordIndex) if keyword is not None else None
         )
+        self.graph = msgspec.convert(graph, GraphIndex) if graph is not None else None
 
 
-@dataclass
-class VectorSearchOption:
+class VectorSearchOption(msgspec.Struct, kw_only=True):
     topk: int
     probe: Optional[int] = None
 
 
-@dataclass
-class KeywordSearchOption:
+class KeywordSearchOption(msgspec.Struct, kw_only=True):
     topk: int
+
+
+class GraphSearchOption(msgspec.Struct, kw_only=True):
+    pass
 
 
 class SearchOption:
@@ -99,74 +106,106 @@ def set_api_key_in_env(keys: Iterable[str], values: Iterable[Optional[str]]):
                 environ[key] = old_value
 
 
-async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # noqa: PLR0912,PLR0915
+def build_pipeline(
+    steps: list[ResourceRequest],
+) -> dict[str, Callable]:
+    calls = {}
+    for step in steps:
+        if step.kind not in PROVIDER_MAP:
+            raise RequestError(f"Unsupported provider kind: {step.kind}")
+
+        provider = PROVIDER_MAP[step.kind].get(step.provider)
+        if not provider:
+            raise RequestError(
+                f"Unsupported provider: {step.provider} for kind: {step.kind}"
+            )
+
+        api_name, api_key = "", None
+        args = step.args
+        if "api_key" in args:
+            api_name = f"{step.provider.upper()}_API_KEY"
+            api_key = args.pop("api_key", None)
+        with set_api_key_in_env((api_name,), (api_key,)):
+            calls[step.kind] = provider(**args)
+    return calls
+
+
+async def run_index_pipeline(
+    request: RunRequest, calls: dict[str, Callable], vr: "VechordRegistry"
+):
+    emb: Optional[BaseEmbedding] = calls.get("text-emb")
+    multimodal: Optional[BaseEmbedding] = calls.get("multimodal-emb")
+    dim = emb.get_dim() if emb else multimodal.get_dim()
+    index: IndexOption = calls.get("index")
+    vec_index = index.vector
+    if vec_index is None:
+        raise RequestError("No vector index specified in the request")
+    enable_keyword_index = index.keyword is not None
+    # enable_graph_index = index.graph is not None
+
+    class Chunk(_DefaultChunk):
+        vec: Annotated[Vector[dim], vec_index]
+
+    await vr.init_table_index([DefaultDocument, Chunk])
+
+    # run the pipeline
+    if multimodal:
+        vecs = [await multimodal.vectorize_multimodal_chunk(request.data)]
+        text = ""
+        chunks = [""]
+    else:
+        if request.input_type is InputType.TEXT:
+            text = request.data.decode("utf-8")
+        elif ocr := calls.get("ocr"):
+            if request.input_type is InputType.PDF:
+                text = await ocr.extract_pdf(request.data)
+            elif request.input_type is InputType.IMAGE:
+                text = await ocr.extract_image(request.data)
+        else:
+            raise RequestError(f"No OCR provider for input type: {request.input_type}")
+
+        if chunker := calls.get("chunk"):
+            chunks = await chunker.segment(text)
+        else:
+            chunks = [text]
+        vecs = []
+        for chunk in chunks:
+            vecs.append(await emb.vectorize_chunk(chunk))
+
+    async with (
+        vr.client.get_connection() as conn,
+        limit_to_transaction_buffer_conn(conn),
+    ):
+        doc = DefaultDocument(text=text)
+        await vr.insert(doc)
+        for i, vec in enumerate(vecs):
+            await vr.insert(
+                Chunk(
+                    vec=vec,
+                    doc_id=doc.uid,
+                    text=chunks[i],
+                    keyword=Keyword(chunks[i]) if enable_keyword_index else None,
+                )
+            )
+        return RunAck(name=request.name, msg="succeed", uid=doc.uid)
+
+
+async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):
     calls = build_pipeline(request.steps)
     emb: Optional[BaseEmbedding] = calls.get("text-emb")
     multimodal: Optional[BaseEmbedding] = calls.get("multimodal-emb")
     if not (emb or multimodal):
-        raise ValueError("No embedding provider specified in the request")
-    dim = emb.get_dim() if emb else multimodal.get_dim()
+        raise RequestError("No embedding provider specified in the request")
     index: IndexOption = calls.get("index")
     search: SearchOption = calls.get("search")
     vr.reset_namespace(request.name)
 
     if index is None and search is None:
-        raise ValueError("No index or search option specified in the request")
+        raise RequestError("No `index` or `search` option specified in the request")
 
     # inject pipeline
     if index:
-        vec_index = index.vector
-        if vec_index is None:
-            raise ValueError("No vector index specified in the request")
-        use_keyword_index = index.keyword is not None
-
-        class Chunk(_DefaultChunk):
-            vec: Annotated[Vector[dim], vec_index]
-
-        await vr.init_table_index([DefaultDocument, Chunk])
-
-        # run the pipeline
-        if multimodal:
-            vecs = [await multimodal.vectorize_multimodal_chunk(request.data)]
-            text = ""
-            chunks = [""]
-        else:
-            if request.input_type is InputType.TEXT:
-                text = request.data.decode("utf-8")
-            elif ocr := calls.get("ocr"):
-                if request.input_type is InputType.PDF:
-                    text = await ocr.extract_pdf(request.data)
-                elif request.input_type is InputType.IMAGE:
-                    text = await ocr.extract_image(request.data)
-            else:
-                raise ValueError(
-                    f"No OCR provider for input type: {request.input_type}"
-                )
-
-            if chunker := calls.get("chunk"):
-                chunks = await chunker.segment(text)
-            else:
-                chunks = [text]
-            vecs = []
-            for chunk in chunks:
-                vecs.append(await emb.vectorize_chunk(chunk))
-
-        async with (
-            vr.client.get_connection() as conn,
-            limit_to_transaction_buffer_conn(conn),
-        ):
-            doc = DefaultDocument(text=text)
-            await vr.insert(doc)
-            for i, vec in enumerate(vecs):
-                await vr.insert(
-                    Chunk(
-                        vec=vec,
-                        doc_id=doc.uid,
-                        text=chunks[i],
-                        keyword=Keyword(chunks[i]) if use_keyword_index else None,
-                    )
-                )
-            return RunAck(name=request.name, msg="succeed", uid=doc.uid)
+        return await run_index_pipeline(request, calls, vr)
     elif search:
         query = request.data.decode("utf-8")
 
@@ -186,30 +225,6 @@ async def run_dynamic_pipeline(request: RunRequest, vr: "VechordRegistry"):  # n
             indices = await rerank.rerank(query, [chunk.text for chunk in retrieved])
             retrieved = [retrieved[i] for i in indices]
         return retrieved
-
-
-def build_pipeline(
-    steps: list[ResourceRequest],
-) -> dict[str, Callable]:
-    calls = {}
-    for step in steps:
-        if step.kind not in PROVIDER_MAP:
-            raise ValueError(f"Unsupported provider kind: {step.kind}")
-
-        provider = PROVIDER_MAP[step.kind].get(step.provider)
-        if not provider:
-            raise ValueError(
-                f"Unsupported provider: {step.provider} for kind: {step.kind}"
-            )
-
-        api_name, api_key = "", None
-        args = step.args
-        if "api_key" in args:
-            api_name = f"{step.provider.upper()}_API_KEY"
-            api_key = args.pop("api_key", None)
-        with set_api_key_in_env((api_name,), (api_key,)):
-            calls[step.kind] = provider(**args)
-    return calls
 
 
 class VechordPipeline:
