@@ -67,6 +67,20 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
         )
 
     @classmethod
+    def from_prompt_data_structure_resp(
+        cls, prompt: str, mime_type: GeminiMimeType, data: bytes, schema: dict[str, Any]
+    ) -> Self:
+        return GeminiGenerateRequest(
+            contents=Part(
+                [
+                    ContentPart(text=prompt),
+                    ContentPart(inline_data=InlineData(mime_type=mime_type, data=data)),
+                ]
+            ),
+            generation_config=GenerationConfig(response_json_schema=schema),
+        )
+
+    @classmethod
     def from_prompt(cls, prompt: str) -> Self:
         return GeminiGenerateRequest(contents=Part(parts=[ContentPart(text=prompt)]))
 
