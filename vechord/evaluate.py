@@ -57,7 +57,7 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def calculate_avg_precision(is_relevant: list[bool], total: int) -> float:
-        if total == 0:
+        if total == 0 or not is_relevant:
             return 0.0
 
         precision = []

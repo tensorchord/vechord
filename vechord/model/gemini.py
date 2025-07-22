@@ -37,7 +37,7 @@ class UMBRELAScore(msgspec.Struct, kw_only=True):
     - 3: Dedicated to the query and contains the exact answer
     """
 
-    score: Annotated[int, msgspec.Meta(gt=0, le=3)]
+    score: Annotated[int, msgspec.Meta(ge=0, le=3)]
 
 
 class InlineData(msgspec.Struct, kw_only=True):
