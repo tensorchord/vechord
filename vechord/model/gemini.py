@@ -28,6 +28,18 @@ class GeminiMimeType(str, Enum):
     HEIF = "image/heif"
 
 
+class UMBRELAScore(msgspec.Struct, kw_only=True):
+    """Score for UMBRELA evaluation.
+
+    - 0: Not relevant
+    - 1: Weakly relevant
+    - 2: Relevant
+    - 3: Highly relevant
+    """
+
+    score: int = Literal[0, 1, 2, 3]
+
+
 class InlineData(msgspec.Struct, kw_only=True):
     mime_type: GeminiMimeType
     data: bytes
