@@ -4,6 +4,7 @@ from vechord.model.gemini import (
     GeminiGenerateRequest,
     GeminiGenerateResponse,
     GeminiMimeType,
+    UMBRELAScore,
 )
 from vechord.model.internal import (
     Document,
@@ -37,6 +38,7 @@ __all__ = [
     "RunAck",
     "RunRequest",
     "SparseEmbedding",
+    "UMBRELAScore",
     "VoyageEmbeddingRequest",
     "VoyageEmbeddingResponse",
     "VoyageMultiModalEmbeddingRequest",
