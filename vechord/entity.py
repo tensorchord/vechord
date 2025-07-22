@@ -176,8 +176,8 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
         """Recognize entities & relations from the image."""
         prompt = (
             "Given the image, extract the meaningful entities and their relations "
-            "between them. Return a list of relations with source and target "
-            "entities in JSON format like: "
+            "between them. Entity could be person, location, org, event or category. "
+            "Return a list of relations with source and target entities like: "
             "- source: the source entity (text, label and description) "
             "- target: the target entity (text, label and description) "
             "- description: a brief description of the relation in the current context "
@@ -197,8 +197,8 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     ) -> tuple[list[Entity], list[Relation]]:
         prompt = (
             "Given the text document, extract entities and the possible relations "
-            "between them. Return a list of relations with source and target "
-            "entities in JSON format like: "
+            "between them. Entity could be person, location, org, event or category. "
+            "Return a list of relations with source and target entities like: "
             "- source: the source entity (text, label and description) "
             "- target: the target entity (text, label and description) "
             "- description: a brief description of the relation in the current context "

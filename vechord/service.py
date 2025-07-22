@@ -9,7 +9,7 @@ from falcon.asgi import App, Request, Response
 from vechord.errors import extract_safe_err_msg
 from vechord.log import logger
 from vechord.model import RunAck, RunRequest
-from vechord.pipeline import run_dynamic_pipeline
+from vechord.pipeline import DynamicPipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
 from vechord.spec import _DefaultChunk
 
@@ -128,7 +128,8 @@ class RunResource:
         request = await validate_request(RunRequest, req, resp)
         if request is None:
             return
-        res = await run_dynamic_pipeline(request, self.registry)
+        pipe = DynamicPipeline.from_steps(request.steps)
+        res = await pipe.run(request, self.registry)
         if res:
             encoder = (
                 msgspec.msgpack

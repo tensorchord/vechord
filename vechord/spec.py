@@ -75,7 +75,8 @@ class Vector(Generic[V], metaclass=VectorMeta):
     """
 
     def __init__(self, *args, **kwargs):
-        raise NotImplementedError("Use Vector[dim] to create a vector type")
+        if self is Vector:
+            raise ValueError("Use Vector[dim] to create a vector type")
 
     @classmethod
     def schema(cls) -> str:
@@ -99,7 +100,7 @@ def create_vector_type(dim: int) -> Type[Vector]:
                 vec = np.array(vec, dtype=np.float32)
             else:
                 raise ValueError("expected list or np.ndarray")
-            return np.asarray(vec, dtype=np.float32)
+            return np.asarray(vec, dtype=np.float32).view(cls)
 
         @classmethod
         def schema(cls):
