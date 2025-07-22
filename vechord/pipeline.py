@@ -441,17 +441,18 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         )
         chunk_uuids = deduplicate_uid(
             itertools.chain.from_iterable(ent.chunk_uuids for ent in similar_ents),
-            limit=self.search.graph.topk,
         )
-        return itertools.chain.from_iterable(
-            [
-                vr.select_by(
-                    chunk_cls.partial_init(uid=chunk_uuid),
-                    fields=("text", "doc_id", "uid"),
-                )
-                for chunk_uuid in chunk_uuids
-            ]
-        )
+        chunks = []
+        for chunk_uuid in chunk_uuids:
+            res = await vr.select_by(
+                chunk_cls.partial_init(uid=chunk_uuid),
+                fields=("text", "doc_id", "uid"),
+            )
+            if not res:
+                continue
+            item = res[0]
+            chunks.append(item)
+        return chunks
 
 
 def deduplicate_uid(uuids: Iterable[UUID], limit: Optional[int] = None) -> list[UUID]:
