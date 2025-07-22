@@ -55,12 +55,28 @@ class BaseEvaluator(ABC):
         evaluation = evaluator.evaluate(res)
         return evaluation["0"]
 
-    @abstractmethod
-    def name(self) -> str:
-        raise NotImplementedError
+    @staticmethod
+    def calculate_avg_precision(is_relevant: list[bool], total: int) -> float:
+        if total == 0:
+            return 0.0
+
+        precision = []
+        relevant = 0
+        for i, rel in enumerate(is_relevant, start=1):
+            if rel:
+                relevant += 1
+                precision.append(relevant / i)
+        return sum(precision) / len(precision)
+
+    @staticmethod
+    def calculate_mrr(is_relevant: list[bool]) -> float:
+        for i, rel in enumerate(is_relevant, start=1):
+            if rel:
+                return 1.0 / i
+        return 0.0
 
     @abstractmethod
-    async def produce_query(self, doc: str, chunk: str) -> str:
+    def name(self) -> str:
         raise NotImplementedError
 
 
@@ -102,6 +118,7 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
     def __init__(self, model: str = "gemini-2.5-flash", relevant_threshold: int = 2):
         super().__init__(model)
         self.relevant_threshold = relevant_threshold
+        self.k_values = (3, 5, 10)
         self.score_schema = msgspec.json.schema(UMBRELAScore)
         self.prompt = """
 Given a query and a passage, you must provide a score on an
@@ -149,3 +166,21 @@ format of: a single integer without any reasoning.
                 "Failed to decode UMBRELA score from Gemini response",
             ) from err
         return score
+
+    async def evaluate_with_estimation(
+        self, query: str, passages: list[str]
+    ) -> dict[str, float]:
+        """Calculate the Precision@K and Mean Reciprocal Rank (MRR)."""
+        scores = [await self.estimate(query, p) for p in passages]
+        is_relevant = [score >= self.relevant_threshold for score in scores]
+        metric = defaultdict(float)
+
+        for k in self.k_values:
+            if k > len(scores) or k <= 0:
+                continue
+            rel_at_k = sum(is_relevant[:k])
+            metric[f"precision@{k}"] = rel_at_k / k
+            metric[f"AP@{k}"] = self.calculate_avg_precision(is_relevant[:k], rel_at_k)
+
+        metric["MRR"] = self.calculate_mrr(is_relevant)
+        return metric

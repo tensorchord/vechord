@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional
 
 import msgspec
 import numpy as np
@@ -32,12 +32,12 @@ class UMBRELAScore(msgspec.Struct, kw_only=True):
     """Score for UMBRELA evaluation.
 
     - 0: Not relevant
-    - 1: Weakly relevant
-    - 2: Relevant
-    - 3: Highly relevant
+    - 1: Relevant but does not answer the query
+    - 2: Answer the query but may be a bit unclear
+    - 3: Dedicated to the query and contains the exact answer
     """
 
-    score: int = Literal[0, 1, 2, 3]
+    score: Annotated[int, msgspec.Meta(gt=0, le=3)]
 
 
 class InlineData(msgspec.Struct, kw_only=True):
