@@ -19,7 +19,7 @@ from vechord.embedding import (
 )
 from vechord.entity import GeminiEntityRecognizer
 from vechord.errors import RequestError
-from vechord.extract import GeminiExtractor
+from vechord.extract import GeminiExtractor, LlamaParseExtractor
 from vechord.model import (
     GraphEntity,
     GraphRelation,
@@ -112,7 +112,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
         "voyage": VoyageDenseEmbedding,
     },
     "multimodal-emb": {"voyage": VoyageMultiModalEmbedding},
-    "ocr": {"gemini": GeminiExtractor},
+    "ocr": {"gemini": GeminiExtractor, "llamaparse": LlamaParseExtractor},
     "rerank": {"cohere": CohereReranker},
     "graph": {"gemini": GeminiEntityRecognizer},
     "index": {"vectorchord": IndexOption},

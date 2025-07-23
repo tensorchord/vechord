@@ -1,10 +1,11 @@
+import asyncio
 from os import environ
 from typing import Literal
 
 import httpx
 import msgspec
 
-from vechord.errors import APIKeyUnsetError, HTTPCallError
+from vechord.errors import APIKeyUnsetError, HTTPCallError, TimeoutError
 from vechord.model import (
     GeminiEmbeddingRequest,
     GeminiEmbeddingResponse,
@@ -14,6 +15,7 @@ from vechord.model import (
     JinaEmbeddingResponse,
     VoyageEmbeddingResponse,
 )
+from vechord.model.llamacloud import LlamaCloudParseRequest, LlamaCloudParseResponse
 from vechord.utils import (
     GEMINI_EMBEDDING_RPS,
     GEMINI_GENERATE_RPS,
@@ -21,6 +23,9 @@ from vechord.utils import (
     VOYAGE_EMBEDDING_RPS,
     RateLimitTransport,
 )
+
+EXTRACT_MAX_POLLING_TIME = 1800  # 30 minutes
+EXTRACT_CHECK_INTERVAL = 5  # seconds
 
 
 class BaseProvider:
@@ -167,3 +172,51 @@ class VoyageEmbeddingProvider(BaseProvider):
                 "Failed to query Voyage embedding", response.status_code, response.text
             )
         return self.decoder.decode(response.content)
+
+
+class LlamaCloudProvider(BaseProvider):
+    """LlamaCloud Provider."""
+
+    PROVIDER_NAME = "LLAMA_CLOUD"
+
+    def __init__(self, model=""):
+        super().__init__(model)
+        self.client = httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            timeout=httpx.Timeout(60.0, connect=10.0),
+        )
+        self.url = "https://api.cloud.llamaindex.ai/api"
+        self.encoder = msgspec.json.Encoder()
+        self.decoder = msgspec.json.Decoder(LlamaCloudParseResponse)
+
+    async def parse(self, req: LlamaCloudParseRequest) -> LlamaCloudParseResponse:
+        files = {"file": (req.filename, req.content, req.mime_type)}
+        response = await self.client.post(
+            f"{self.url}/parsing/upload",
+            files=files,
+        )
+        if response.is_error:
+            raise HTTPCallError(
+                "Failed to upload file to LlamaCloud for parsing",
+                response.status_code,
+                response.text,
+            )
+        return self.decoder.decode(response.content)
+
+    async def get_text(self, job_id: str) -> str:
+        """Get the text result from a LlamaCloud job."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + EXTRACT_MAX_POLLING_TIME
+        while True:
+            response = await self.client.get(
+                f"{self.url}/parsing/job/{job_id}/result/text"
+            )
+            if response.is_success:
+                return response.json()["text"]
+            if loop.time() > deadline:
+                raise TimeoutError(
+                    f"Polling LlamaCloud job result timed out after {EXTRACT_MAX_POLLING_TIME} seconds."
+                )
+            await asyncio.sleep(EXTRACT_CHECK_INTERVAL)
