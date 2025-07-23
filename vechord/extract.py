@@ -9,8 +9,10 @@ from vechord.model import (
     Document,
     GeminiGenerateRequest,
     GeminiMimeType,
+    LlamaCloudMimeType,
+    LlamaCloudParseRequest,
 )
-from vechord.provider import GeminiGenerateProvider
+from vechord.provider import GeminiGenerateProvider, LlamaCloudProvider
 
 
 class BaseHTMLParser(HTMLParser):
@@ -127,3 +129,38 @@ class GeminiExtractor(SimpleExtractor, GeminiGenerateProvider):
             )
         )
         return resp.get_text().strip()
+
+
+class LlamaParseExtractor(SimpleExtractor, LlamaCloudProvider):
+    """Extract test with LlamaCloud Parse service.
+
+    Limits:
+        - Maximum run time for jobs : 30 minutes. If your job takes more than **30 minutes** to process, a TIMEOUT error will be raised.
+        - Maximum size of files: **300Mb**.
+        - Maximum image extracted / OCR per page: **35 images**. If more images are present in a page, only the 35 biggest one are extracted / OCR.
+        - Maximum amount of text extracted per page: **64Kb**. Content beyond the 64Kb mark is ignored.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def name(self) -> str:
+        return "llama_parse_extractor"
+
+    async def extract_image(self, img: bytes) -> str:
+        """Extract text from image using LlamaCloud Parse service."""
+        req = LlamaCloudParseRequest.from_image(img, LlamaCloudMimeType.JPEG)
+        resp = await self.parse(req)
+        text = await self.get_text(resp.id)
+        if text is not None:
+            return text.strip()
+        return ""
+
+    async def extract_pdf(self, doc: bytes) -> str:
+        """Extract text from PDF using LlamaCloud Parse service."""
+        req = LlamaCloudParseRequest.from_pdf(doc, LlamaCloudMimeType.PDF)
+        resp = await self.parse(req)
+        text = await self.get_text(resp.id)
+        if text is not None:
+            return text.strip()
+        return ""

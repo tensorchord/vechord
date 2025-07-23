@@ -16,7 +16,7 @@ from vechord.embedding import (
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
 )
-from vechord.extract import GeminiExtractor
+from vechord.extract import GeminiExtractor, LlamaParseExtractor
 from vechord.model import InputType, ResourceRequest, RunAck, RunRequest
 from vechord.rerank import CohereReranker
 from vechord.spec import (
@@ -73,7 +73,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
         "voyage": VoyageDenseEmbedding,
     },
     "multimodal-emb": {"voyage": VoyageMultiModalEmbedding},
-    "ocr": {"gemini": GeminiExtractor},
+    "ocr": {"gemini": GeminiExtractor, "llamaparse": LlamaParseExtractor},
     "rerank": {"cohere": CohereReranker},
     "index": {"vectorchord": IndexOption},
     "search": {"vectorchord": SearchOption},

@@ -13,6 +13,11 @@ from vechord.model.internal import (
     SparseEmbedding,
 )
 from vechord.model.jina import JinaEmbeddingRequest, JinaEmbeddingResponse
+from vechord.model.llamacloud import (
+    LlamaCloudMimeType,
+    LlamaCloudParseRequest,
+    LlamaCloudParseResponse,
+)
 from vechord.model.voyage import (
     VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
@@ -31,6 +36,9 @@ __all__ = [
     "InputType",
     "JinaEmbeddingRequest",
     "JinaEmbeddingResponse",
+    "LlamaCloudMimeType",
+    "LlamaCloudParseRequest",
+    "LlamaCloudParseResponse",
     "Relation",
     "ResourceRequest",
     "RetrievedChunk",
