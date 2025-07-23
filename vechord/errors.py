@@ -1,4 +1,8 @@
-class APIKeyUnsetError(Exception):
+class VechordError(Exception):
+    """Base class for all Vechord exceptions."""
+
+
+class APIKeyUnsetError(VechordError):
     """Raised when the API key is not set."""
 
     def __init__(self, name: str):
@@ -8,15 +12,36 @@ class APIKeyUnsetError(Exception):
         super().__init__(self.message)
 
 
-class HTTPCallError(Exception):
-    def __init__(self, msg: str, status_code: int, err_msg: str):
+class HTTPCallError(VechordError):
+    def __init__(
+        self, msg: str, status_code: int = 500, err_msg: str = "internal error"
+    ):
         self.message = f"{msg} [{status_code}]: {err_msg}"
         super().__init__(self.message)
 
+    def __str__(self):
+        return "Failed to call external LLM/Embedding services"
 
-class DecodeStructuredOutputError(Exception):
+
+class DecodeStructuredOutputError(VechordError):
     """Raised when decoding structured output fails."""
 
+    def __str__(self):
+        return "Failed to decode structured output from LLM services"
 
-class UnexpectedResponseError(Exception):
+
+class UnexpectedResponseError(VechordError):
     """Raised when the HTTP response is not as expected."""
+
+    def __str__(self):
+        return "Unexpected response from LLM/Embedding services"
+
+
+class RequestError(VechordError):
+    """Raised with bad request."""
+
+
+def extract_safe_err_msg(exc: Exception) -> str:
+    if not isinstance(exc, VechordError):
+        return ""
+    return str(exc)

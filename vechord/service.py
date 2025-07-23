@@ -6,9 +6,10 @@ import numpy as np
 from defspec import OpenAPI, RenderTemplate
 from falcon.asgi import App, Request, Response
 
+from vechord.errors import extract_safe_err_msg
 from vechord.log import logger
 from vechord.model import RunAck, RunRequest
-from vechord.pipeline import run_dynamic_pipeline
+from vechord.pipeline import DynamicPipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
 from vechord.spec import _DefaultChunk
 
@@ -70,7 +71,8 @@ async def uncaught_exception_handler(
         req.path,
         exc_info=exc,
     )
-    raise falcon.HTTPError(falcon.HTTP_500)
+    description = extract_safe_err_msg(exc)
+    raise falcon.HTTPError(falcon.HTTP_500, title=req.path, description=description)
 
 
 class HealthCheck:
@@ -126,7 +128,8 @@ class RunResource:
         request = await validate_request(RunRequest, req, resp)
         if request is None:
             return
-        res = await run_dynamic_pipeline(request, self.registry)
+        pipe = DynamicPipeline.from_steps(request.steps)
+        res = await pipe.run(request, self.registry)
         if res:
             encoder = (
                 msgspec.msgpack

@@ -7,6 +7,8 @@ import msgspec
 import numpy as np
 import pytest
 
+from tests.conftest import gen_vector
+from vechord.service import vechord_decode_hook, vechord_encode_hook
 from vechord.spec import (
     DefaultDocument,
     ForeignKey,
@@ -43,6 +45,19 @@ class Chunk(Table, kw_only=True):
 class Simple(Table):
     uid: int
     text: str
+
+
+def test_table_serde():
+    chunk = Chunk(
+        doc_id=1,
+        text="hello",
+        vec=gen_vector(),
+        multivec=[gen_vector(), gen_vector()],
+        keyword=Keyword("hello"),
+    )
+    encoded = msgspec.json.encode(chunk, enc_hook=vechord_encode_hook)
+    decoded = msgspec.json.decode(encoded, type=Chunk, dec_hook=vechord_decode_hook)
+    assert isinstance(decoded, Chunk)
 
 
 @pytest.mark.parametrize(

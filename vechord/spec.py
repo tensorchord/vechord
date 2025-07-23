@@ -75,7 +75,8 @@ class Vector(Generic[V], metaclass=VectorMeta):
     """
 
     def __init__(self, *args, **kwargs):
-        raise NotImplementedError("Use Vector[dim] to create a vector type")
+        if self.__class__ is Vector:
+            raise ValueError("Use Vector[dim] to create a vector type")
 
     @classmethod
     def schema(cls) -> str:
@@ -99,7 +100,7 @@ def create_vector_type(dim: int) -> Type[Vector]:
                 vec = np.array(vec, dtype=np.float32)
             else:
                 raise ValueError("expected list or np.ndarray")
-            return np.asarray(vec, dtype=np.float32)
+            return np.asarray(vec, dtype=np.float32).view(cls)
 
         @classmethod
         def schema(cls):
@@ -506,6 +507,15 @@ class Storage(msgspec.Struct):
         return cls(**args)
 
 
+E = TypeVar("E")
+
+
+class AnyOf(msgspec.Struct, Generic[E]):
+    """Select the records that match any of the given values."""
+
+    values: Sequence[E]
+
+
 class Table(Storage):
     """Base class for table definition."""
 
@@ -654,7 +664,7 @@ class _DefaultChunk(Table, kw_only=True):
     uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
     doc_id: Annotated[UUID, ForeignKey[DefaultDocument.uid]]
     text: str
-    vec: Vector[1]
+    vec: Vector[1]  # as a placeholder, will be replaced by the actual vector type
     keyword: Keyword
 
 
