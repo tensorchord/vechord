@@ -89,7 +89,7 @@ class _Entity(Table, kw_only=True):
     text: str
     label: str
     description: str = ""
-    vec: Vector[1]
+    vec: Vector[1]  # as a placeholder, will be replaced by the actual vector type
 
 
 class _Relation(Table, kw_only=True):
@@ -97,7 +97,7 @@ class _Relation(Table, kw_only=True):
     source: UUID
     target: UUID
     description: str
-    vec: Vector[1]
+    vec: Vector[1]  # as a placeholder, will be replaced by the actual vector type
 
 
 PROVIDER_MAP: dict[str, dict[str, Any]] = {
@@ -452,6 +452,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
 
 
 def deduplicate_uid(uuids: Iterable[UUID], limit: Optional[int] = None) -> list[UUID]:
+    """Maintain the order of the occurrence of UUIDs and deduplicate them."""
     uuids = {uid: None for uid in uuids}
     return list(uuids.keys())[:limit]
 

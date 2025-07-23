@@ -75,7 +75,7 @@ class Vector(Generic[V], metaclass=VectorMeta):
     """
 
     def __init__(self, *args, **kwargs):
-        if type(self) is Vector:
+        if self.__class__ is Vector:
             raise ValueError("Use Vector[dim] to create a vector type")
 
     @classmethod
@@ -664,7 +664,7 @@ class _DefaultChunk(Table, kw_only=True):
     uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
     doc_id: Annotated[UUID, ForeignKey[DefaultDocument.uid]]
     text: str
-    vec: Vector[1]
+    vec: Vector[1]  # as a placeholder, will be replaced by the actual vector type
     keyword: Keyword
 
 
