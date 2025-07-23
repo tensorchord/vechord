@@ -1,12 +1,11 @@
 import asyncio
-import time
 from os import environ
 from typing import Literal
 
 import httpx
 import msgspec
 
-from vechord.errors import APIKeyUnsetError, HTTPCallError
+from vechord.errors import APIKeyUnsetError, HTTPCallError, TimeoutError
 from vechord.model import (
     GeminiEmbeddingRequest,
     GeminiEmbeddingResponse,
@@ -208,14 +207,15 @@ class LlamaCloudProvider(BaseProvider):
 
     async def get_text(self, job_id: str) -> str:
         """Get the text result from a LlamaCloud job."""
-        start_time = time.time()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + EXTRACT_MAX_POLLING_TIME
         while True:
             response = await self.client.get(
                 f"{self.url}/parsing/job/{job_id}/result/text"
             )
             if response.is_success:
                 return response.json()["text"]
-            if time.time() - start_time > EXTRACT_MAX_POLLING_TIME:
+            if loop.time() > deadline:
                 raise TimeoutError(
                     f"Polling LlamaCloud job result timed out after {EXTRACT_MAX_POLLING_TIME} seconds."
                 )
