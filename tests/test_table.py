@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 
 from tests.conftest import DenseVector, gen_vector
 from vechord.spec import (
+    AnyOf,
     ForeignKey,
     Keyword,
     MultiVectorIndex,
@@ -109,9 +110,18 @@ async def test_insert_select_remove(registry):
     assert len(first) == 1
     assert first[0].text == "hello world"
 
+    # select by AnyOf
+    await registry.insert(Document(text="hello again"))
+    targets = [1, 3]
+    multi = await registry.select_by(Document.partial_init(uid=AnyOf(targets)))
+    assert len(multi) == len(targets)
+    assert multi[0].text == "hello world"
+    assert multi[1].text == "hello again"
+    await registry.remove_by(Document.partial_init(uid=AnyOf(targets)))
+
     # remove by id
     await registry.remove_by(Document.partial_init(uid=2))
-    assert len(await registry.select_by(Document.partial_init())) == 1
+    assert len(await registry.select_by(Document.partial_init())) == 0
 
 
 @pytest.mark.db

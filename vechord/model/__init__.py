@@ -8,8 +8,8 @@ from vechord.model.gemini import (
 )
 from vechord.model.internal import (
     Document,
-    Entity,
-    Relation,
+    GraphEntity,
+    GraphRelation,
     RetrievedChunk,
     SparseEmbedding,
 )
@@ -23,16 +23,16 @@ from vechord.model.web import InputType, ResourceRequest, RunAck, RunRequest
 
 __all__ = [
     "Document",
-    "Entity",
     "GeminiEmbeddingRequest",
     "GeminiEmbeddingResponse",
     "GeminiGenerateRequest",
     "GeminiGenerateResponse",
     "GeminiMimeType",
+    "GraphEntity",
+    "GraphRelation",
     "InputType",
     "JinaEmbeddingRequest",
     "JinaEmbeddingResponse",
-    "Relation",
     "ResourceRequest",
     "RetrievedChunk",
     "RunAck",

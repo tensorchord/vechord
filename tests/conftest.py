@@ -41,6 +41,6 @@ async def fixture_registry(request):
 DenseVector = Vector[128]
 
 
-def gen_vector():
+def gen_vector(dim: int = 128) -> DenseVector:
     rng = np.random.default_rng()
-    return DenseVector(rng.random((128,), dtype=np.float32))
+    return DenseVector(rng.random((dim,), dtype=np.float32))

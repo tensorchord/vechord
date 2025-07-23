@@ -4,15 +4,15 @@ import msgspec
 
 
 # `frozen=True` is required to make it hashable
-class Entity(msgspec.Struct, kw_only=True, frozen=True):
+class GraphEntity(msgspec.Struct, kw_only=True, frozen=True):
     text: str
     label: str = ""
     description: str = ""
 
 
-class Relation(msgspec.Struct, kw_only=True, frozen=True):
-    source: Entity
-    target: Entity
+class GraphRelation(msgspec.Struct, kw_only=True, frozen=True):
+    source: GraphEntity
+    target: GraphEntity
     description: str = ""
 
 
