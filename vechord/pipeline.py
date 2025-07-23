@@ -21,6 +21,8 @@ from vechord.entity import GeminiEntityRecognizer
 from vechord.errors import RequestError
 from vechord.extract import GeminiExtractor
 from vechord.model import (
+    GraphEntity,
+    GraphRelation,
     InputType,
     ResourceRequest,
     RunAck,
@@ -28,6 +30,7 @@ from vechord.model import (
 )
 from vechord.rerank import CohereReranker
 from vechord.spec import (
+    AnyOf,
     DefaultDocument,
     Keyword,
     KeywordIndex,
@@ -160,6 +163,10 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             raise RequestError("No `index` or `search` option specified in the request")
         if self.index and self.index.graph and not self.graph:
             raise RequestError("Graph index requires a graph provider")
+        if self.index and self.index.vector is None:
+            raise RequestError("Vector index is required if `index` is specified")
+        if self.search and not (self.text_emb or self.multimodal_emb):
+            raise RequestError("Search requires at least one embedding provider")
 
     @classmethod
     def from_steps(cls, steps: list[ResourceRequest]) -> Self:
@@ -183,25 +190,51 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 calls[(step.kind).replace("-", "_")] = provider(**args)
         return msgspec.convert(calls, DynamicPipeline)
 
-    def run(self, request: RunRequest, vr: "VechordRegistry"):
+    async def run(self, request: RunRequest, vr: "VechordRegistry"):
         """Run the dynamic pipeline with the given request."""
         if self.index:
-            return self.run_index(request, vr)
+            return await self.run_index(request, vr)
         elif self.search:
-            return self.run_search(request, vr)
+            return await self.run_search(request, vr)
         else:
             raise RequestError("No valid pipeline configuration found")
+
+    @staticmethod
+    def _convert_from_extracted_graph(
+        uid: UUID,
+        ents: list[GraphEntity],
+        rels: list[GraphRelation],
+        ent_cls: type[Table],
+        rel_cls: type[Table],
+    ):
+        converted_ents = [
+            ent_cls(
+                chunk_uuids=[uid],
+                text=ent.text,
+                label=ent.label,
+                description=ent.description,
+                vec=None,  # will be set later
+            )
+            for ent in ents
+        ]
+        converted_rels = [
+            rel_cls(
+                source=find_uid_by_text(rel.source.text, converted_ents),
+                target=find_uid_by_text(rel.target.text, converted_ents),
+                description=f"{rel.source.text} {rel.description} {rel.target.text}",
+                vec=None,  # will be set later
+            )
+            for rel in rels
+        ]
+        return converted_ents, converted_rels
 
     async def run_index(self, request: RunRequest, vr: "VechordRegistry") -> RunAck:  # noqa: PLR0912
         dim = (
             self.text_emb.get_dim() if self.text_emb else self.multimodal_emb.get_dim()
         )
-        vec_index = self.index.vector
-        if vec_index is None:
-            raise RequestError("No vector index specified in the request")
         enable_keyword_index = self.index.keyword is not None
         enable_graph_index = self.index.graph is not None
-        vec_index_type = Annotated[Vector[dim], vec_index]
+        vec_index_type = Annotated[Vector[dim], self.index.vector]
 
         Chunk = msgspec.defstruct(
             "Chunk", (("vec", vec_index_type),), bases=(_DefaultChunk,)
@@ -241,29 +274,11 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                     doc.text = await self.ocr.extract_image(request.data)
             elif self.graph:
                 img_ents, img_rels = await self.graph.recognize_image(request.data)
-                ents.extend(
-                    [
-                        Entity(
-                            chunk_uuids=[doc.uid],
-                            text=ent.text,
-                            label=ent.label,
-                            description=ent.description,
-                            vec=None,  # will be set later
-                        )
-                        for ent in img_ents
-                    ]
+                conv_ents, conv_rels = self._convert_from_extracted_graph(
+                    doc.uid, img_ents, img_rels, Entity, Relation
                 )
-                rels.extend(
-                    [
-                        Relation(
-                            source=find_uid_by_text(rel.source.text, ents),
-                            target=find_uid_by_text(rel.target.text, ents),
-                            description=rel.description,
-                            vec=None,  # will be set later
-                        )
-                        for rel in img_rels
-                    ]
-                )
+                ents.extend(conv_ents)
+                rels.extend(conv_rels)
             else:
                 raise RequestError(
                     f"No OCR provider for input type: {request.input_type}"
@@ -284,25 +299,11 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                     chunk_ents, chunk_rels = await self.graph.recognize_with_relations(
                         sent
                     )
-                    ents.extend(
-                        Entity(
-                            chunk_uuids=[chunk.uid],
-                            text=ent.text,
-                            label=ent.label,
-                            description=ent.description,
-                            vec=None,  # will be set later
-                        )
-                        for ent in chunk_ents
+                    conv_ents, conv_rels = self._convert_from_extracted_graph(
+                        chunk.uid, chunk_ents, chunk_rels, Entity, Relation
                     )
-                    rels.extend(
-                        Relation(
-                            source=find_uid_by_text(rel.source.text, ents),
-                            target=find_uid_by_text(rel.target.text, ents),
-                            description=rel.description,
-                            vec=None,  # will be set later
-                        )
-                        for rel in chunk_rels
-                    )
+                    ents.extend(conv_ents)
+                    rels.extend(conv_rels)
                 chunks.append(chunk)
 
         async with (
@@ -310,7 +311,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             limit_to_transaction_buffer_conn(conn),
         ):
             await vr.insert(doc)
-            for chunk in enumerate(chunks):
+            for chunk in chunks:
                 await vr.insert(chunk)
             if self.index.graph:
                 await self.graph_insert(
@@ -365,6 +366,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 exist = exist_rel[0]
                 rel.description += f"\n{exist.description}"
                 await vr.remove_by(rel_cls.partial_init(uid=exist.uid))
+            rel.vec = await self.text_emb.vectorize_chunk(f"{rel.description}")
             await vr.insert(rel)
 
     async def run_search(self, request: RunRequest, vr: "VechordRegistry"):
@@ -426,10 +428,10 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 )
             )
             ents.extend(
-                vr.select_by(
-                    ent_cls.partial_init(uuid=ent_uuid), fields=("text", "description")
+                await vr.select_by(
+                    ent_cls.partial_init(uid=AnyOf(ent_uuids)),
+                    fields=("text", "description"),
                 )
-                for ent_uuid in ent_uuids
             )
         if not ents:
             return []
@@ -442,16 +444,10 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         chunk_uuids = deduplicate_uid(
             itertools.chain.from_iterable(ent.chunk_uuids for ent in similar_ents),
         )
-        chunks = []
-        for chunk_uuid in chunk_uuids:
-            res = await vr.select_by(
-                chunk_cls.partial_init(uid=chunk_uuid),
-                fields=("text", "doc_id", "uid"),
-            )
-            if not res:
-                continue
-            item = res[0]
-            chunks.append(item)
+        chunks = await vr.select_by(
+            chunk_cls.partial_init(uid=AnyOf(chunk_uuids)),
+            fields=("text", "doc_id", "uid"),
+        )
         return chunks
 
 

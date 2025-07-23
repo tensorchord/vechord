@@ -10,6 +10,7 @@ from psycopg.errors import DatabaseError
 from psycopg_pool import AsyncConnectionPool
 
 from vechord.spec import (
+    AnyOf,
     IndexColumn,
     Keyword,
     KeywordIndex,
@@ -151,6 +152,25 @@ class VechordClient:
     def _index_name(self, name: str, column: IndexColumn):
         return f"{self.ns}_{name}_{column.name}_{column.index.name}"
 
+    def _build_conditions(self, kvs: dict[str, Any]):
+        if not kvs:
+            return sql.SQL("TRUE")
+        conditions = []
+        for col, val in kvs.items():
+            if val is None:
+                conditions.append(sql.SQL("{} IS NULL").format(sql.Identifier(col)))
+            elif isinstance(val, AnyOf):
+                conditions.append(
+                    sql.SQL("{} = ANY({})").format(
+                        sql.Identifier(col), sql.Literal(val.values)
+                    )
+                )
+            else:
+                conditions.append(
+                    sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
+                )
+        return sql.SQL(" AND ").join(conditions)
+
     async def select(
         self,
         name: str,
@@ -171,15 +191,9 @@ class VechordClient:
             table=sql.Identifier(f"{self.ns}_{name}"),
         )
         if kvs:
-            condition = sql.SQL(" AND ").join(
-                sql.SQL("{} IS NULL").format(sql.Identifier(col))
-                if val is None
-                else sql.SQL("{} = {}").format(
-                    sql.Identifier(col), sql.Placeholder(col)
-                )
-                for col, val in kvs.items()
+            query += sql.SQL(" WHERE {condition}").format(
+                condition=self._build_conditions(kvs)
             )
-            query += sql.SQL(" WHERE {condition}").format(condition=condition)
         elif from_buffer:
             query += sql.SQL(" WHERE xmin = pg_current_xact_id()::xid;")
         if limit:
@@ -230,13 +244,10 @@ class VechordClient:
     async def delete(self, name: str, kvs: dict):
         async with self.get_connection() as conn:
             if kvs:
-                condition = sql.SQL(" AND ").join(
-                    sql.SQL("{} = {}").format(sql.Identifier(col), sql.Placeholder(col))
-                    for col in kvs
-                )
                 await conn.execute(
                     sql.SQL("DELETE FROM {table} WHERE {condition};").format(
-                        table=sql.Identifier(f"{self.ns}_{name}"), condition=condition
+                        table=sql.Identifier(f"{self.ns}_{name}"),
+                        condition=self._build_conditions(kvs),
                     ),
                     kvs,
                 )

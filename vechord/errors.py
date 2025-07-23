@@ -13,17 +13,28 @@ class APIKeyUnsetError(VechordError):
 
 
 class HTTPCallError(VechordError):
-    def __init__(self, msg: str, status_code: int, err_msg: str):
+    def __init__(
+        self, msg: str, status_code: int = 500, err_msg: str = "internal error"
+    ):
         self.message = f"{msg} [{status_code}]: {err_msg}"
         super().__init__(self.message)
+
+    def __str__(self):
+        return "Failed to call external LLM/Embedding services"
 
 
 class DecodeStructuredOutputError(VechordError):
     """Raised when decoding structured output fails."""
 
+    def __str__(self):
+        return "Failed to decode structured output from LLM services"
+
 
 class UnexpectedResponseError(VechordError):
     """Raised when the HTTP response is not as expected."""
+
+    def __str__(self):
+        return "Unexpected response from LLM/Embedding services"
 
 
 class RequestError(VechordError):
@@ -33,12 +44,4 @@ class RequestError(VechordError):
 def extract_safe_err_msg(exc: Exception) -> str:
     if not isinstance(exc, VechordError):
         return ""
-
-    if isinstance(exc, HTTPCallError):
-        return "Failed to call external LLM/Embedding services"
-    elif isinstance(exc, DecodeStructuredOutputError):
-        return "Failed to decode structured output from LLM services"
-    elif isinstance(exc, UnexpectedResponseError):
-        return "Unexpected response from LLM/Embedding services"
-    elif isinstance(exc, (RequestError, APIKeyUnsetError)):
-        return exc.message
+    return str(exc)

@@ -75,7 +75,7 @@ class Vector(Generic[V], metaclass=VectorMeta):
     """
 
     def __init__(self, *args, **kwargs):
-        if self is Vector:
+        if type(self) is Vector:
             raise ValueError("Use Vector[dim] to create a vector type")
 
     @classmethod
@@ -505,6 +505,15 @@ class Storage(msgspec.Struct):
         fields = cls.fields()
         args = dict(zip(fields, [msgspec.UNSET] * len(fields), strict=False)) | kwargs
         return cls(**args)
+
+
+E = TypeVar("E")
+
+
+class AnyOf(msgspec.Struct, Generic[E]):
+    """Select the records that match any of the given values."""
+
+    values: Sequence[E]
 
 
 class Table(Storage):
