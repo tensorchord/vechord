@@ -3,7 +3,7 @@ from typing import Literal, Optional
 import msgspec
 import numpy as np
 
-from vechord.errors import UnexpectedResponseError
+from vechord.errors import RequestError, UnexpectedResponseError
 from vechord.typing import Self
 
 # https://jina.ai/api-dashboard/embedding
@@ -39,6 +39,32 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
             embedding_type="base64",
             input_content=[JinaInput(text=text)],
         )
+
+    @classmethod
+    def from_text_image(
+        cls,
+        text: str,
+        image: bytes,
+        image_url: str,
+        task: JinaEmbeddingType,
+        model: str,
+    ) -> Self:
+        req = JinaEmbeddingRequest(
+            model=model,
+            truncate=True,
+            task=task,
+            embedding_type="base64",
+            input_content=[],
+        )
+        if not (text or image or image_url):
+            raise RequestError("At least one of text, image must be provided")
+        if text:
+            req.input_content.append(JinaInput(text=text))
+        if image:
+            req.input_content.append(JinaInput(image=image))
+        if image_url:
+            req.input_content.append(JinaInput(image=image_url))
+        return req
 
 
 class EmbeddingObject(msgspec.Struct, kw_only=True, omit_defaults=True):

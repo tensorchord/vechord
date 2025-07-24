@@ -5,7 +5,7 @@ from typing import Literal, Optional
 import msgspec
 import numpy as np
 
-from vechord.errors import UnexpectedResponseError
+from vechord.errors import RequestError, UnexpectedResponseError
 from vechord.typing import Self
 
 
@@ -89,6 +89,10 @@ class VoyageMultiModalEmbeddingRequest(msgspec.Struct, kw_only=True):
         model: str,
         input_type: VOYAGE_INPUT_TYPE,
     ) -> Self:
+        if not (text or image_url or image):
+            raise RequestError(
+                "At least one of text, image_url, or image must be provided."
+            )
         contents = []
         if text:
             contents.append(Text(text=text))
