@@ -31,7 +31,7 @@ class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
     name: str
     data: bytes
     input_type: InputType = InputType.TEXT
-    steps: list[ResourceRequest]
+    steps: list[ResourceRequest] = msgspec.field(default_factory=list)
 
 
 class RunAck(msgspec.Struct, kw_only=True, frozen=True):

@@ -12,7 +12,7 @@ from vechord.embedding import GeminiDenseEmbedding
 from vechord.entity import GeminiEntityRecognizer
 from vechord.evaluate import BaseEvaluator
 from vechord.registry import VechordRegistry
-from vechord.spec import PrimaryKeyUUID, Table, Vector
+from vechord.spec import AnyOf, PrimaryKeyUUID, Table, Vector
 
 BASE_URL = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip"
 DEFAULT_DATASET = "scifact"
@@ -182,11 +182,7 @@ async def expand_by_text(text: str) -> list[Chunk]:
             continue
         entity = entity[0]
         chunks.extend(
-            res[0]
-            for res in [
-                await vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
-                for chunk_uuid in entity.chunk_uuids
-            ]
+            await vr.select_by(Chunk.partial_init(uuid=AnyOf(entity.chunk_uuids)))
         )
     return chunks
 
@@ -199,27 +195,20 @@ async def expand_by_graph(text: str, topk=3) -> list[Chunk]:
     similar_ents = await vr.search_by_vector(
         Entity, await emb.vectorize_query(entity_text), topk=topk
     )
-    ents = set(ent.uuid for ent in similar_ents)
+    ent_uuids = set(ent.uuid for ent in similar_ents)
     if rels:
         relation_text = " ".join(rel.description for rel in rels)
         similar_rels = await vr.search_by_vector(
             Relation, await emb.vectorize_query(relation_text), topk=topk
         )
-        ents |= set(rel.source for rel in similar_rels) | set(
+        ent_uuids |= set(rel.source for rel in similar_rels) | set(
             rel.target for rel in similar_rels
         )
     chunks = []
-    for ent_uuid in ents:
-        res = await vr.select_by(Entity.partial_init(uuid=ent_uuid))
-        if not res:
-            continue
-        entity = res[0]
+    retrieved_ents = await vr.select_by(Entity.partial_init(uuid=AnyOf(ent_uuids)))
+    for ent in retrieved_ents:
         chunks.extend(
-            res[0]
-            for res in [
-                await vr.select_by(Chunk.partial_init(uuid=chunk_uuid))
-                for chunk_uuid in entity.chunk_uuids
-            ]
+            await vr.select_by(Chunk.partial_init(uuid=AnyOf(ent.chunk_uuids)))
         )
     return chunks
 
