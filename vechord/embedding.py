@@ -35,13 +35,6 @@ class BaseEmbedding(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
-        raise NotImplementedError
-
-    async def vectorize_query(self, text: str) -> np.ndarray:
-        return await self.vectorize_chunk(text)
-
-    @abstractmethod
     def get_dim(self) -> int:
         raise NotImplementedError
 
@@ -50,7 +43,29 @@ class BaseEmbedding(ABC):
         raise NotImplementedError
 
 
-class SpacyDenseEmbedding(BaseEmbedding):
+class BaseTextEmbedding(BaseEmbedding):
+    @abstractmethod
+    async def vectorize_chunk(self, text: str) -> np.ndarray:
+        raise NotImplementedError
+
+    async def vectorize_query(self, text: str) -> np.ndarray:
+        return await self.vectorize_chunk(text)
+
+
+class BaseMultiModalEmbedding(BaseEmbedding):
+    @abstractmethod
+    async def vectorize_multimodal_chunk(
+        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+    ) -> np.ndarray:
+        raise NotImplementedError
+
+    async def vectorize_multimodal_query(
+        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+    ) -> np.ndarray:
+        return await self.vectorize_multimodal_chunk(text, image, image_url)
+
+
+class SpacyDenseEmbedding(BaseTextEmbedding):
     """Spacy Dense Embedding.
 
     The default small model is unlikely to be useful for real applications.
@@ -79,7 +94,7 @@ class SpacyDenseEmbedding(BaseEmbedding):
         return doc.vector
 
 
-class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
+class GeminiDenseEmbedding(BaseTextEmbedding, GeminiEmbeddingProvider):
     """Gemini Dense Embedding. (limit to **8,192** tokens)
 
     Args:
@@ -116,7 +131,7 @@ class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
         return resp.get_emb()
 
 
-class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
+class JinaDenseEmbedding(BaseTextEmbedding, JinaEmbeddingProvider):
     """Jina Dense Embedding. (limit to **32,768** tokens for v4, **8,192** for v3)
 
     Args:
@@ -149,7 +164,55 @@ class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
         return resp.get_emb()
 
 
-class VoyageDenseEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
+class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
+    """Jina MultiModal Dense Embedding, limit to **32,768** tokens for v4.
+
+    Args:
+        model: Jina embedding model name, could be "jina-embeddings-v4"
+        dim: embedding dimension, up to 2048
+    """
+    def __init__(self, model="jina-embeddings-v4", dim=2048):
+        super().__init__(model, dim)
+
+    def get_dim(self) -> int:
+        return self.dim
+
+    def vec_type(self) -> VecType:
+        return VecType.DENSE
+
+    def name(self) -> str:
+        return f"jina_emb_{self.model}_{self.dim}"
+
+    async def vectorize_multimodal_chunk(
+        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+    ) -> np.ndarray:
+        req = await self.query(
+            JinaEmbeddingRequest.from_text_image(
+                text=text,
+                image=image,
+                image_url=image_url,
+                task="retrieval.passage",
+                model=self.model,
+            )
+        )
+        return req.get_emb()
+
+    async def vectorize_multimodal_query(
+        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+    ) -> np.ndarray:
+        req = await self.query(
+            JinaEmbeddingRequest.from_text_image(
+                text=text,
+                image=image,
+                image_url=image_url,
+                task="retrieval.query",
+                model=self.model,
+            )
+        )
+        return req.get_emb()
+
+
+class VoyageDenseEmbedding(BaseTextEmbedding, VoyageEmbeddingProvider):
     def __init__(
         self, model: str = "voyage-3.5", dim: Literal[256, 512, 1024, 2048] = 1024
     ):
@@ -181,7 +244,7 @@ class VoyageDenseEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
         return resp.get_emb()
 
 
-class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
+class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider):
     """Voyage Multimodal Embedding.
 
     Accepts text, image (as bytes), or image_url.
@@ -196,6 +259,12 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
 
     def name(self):
         return f"voyage_multimodal_emb_{self.model}_{self.dim}"
+
+    def get_dim(self):
+        return self.dim
+
+    def vec_type(self) -> VecType:
+        return VecType.DENSE
 
     async def vectorize(self, text, input_type: VOYAGE_INPUT_TYPE = "query"):
         return await self.vectorize_multimodal(text=text, input_type=input_type)
@@ -244,7 +313,7 @@ class VoyageMultiModalEmbedding(VoyageDenseEmbedding):
         )
 
 
-class OpenAIDenseEmbedding(BaseEmbedding):
+class OpenAIDenseEmbedding(BaseTextEmbedding):
     """OpenAI Dense Embedding."""
 
     def __init__(self, model: str = "text-embedding-3-large", dim: int = 3072):

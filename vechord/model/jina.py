@@ -40,6 +40,30 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
             input_content=[JinaInput(text=text)],
         )
 
+    @classmethod
+    def from_text_image(
+        cls,
+        text: str,
+        image: bytes,
+        image_url: str,
+        task: JinaEmbeddingType,
+        model: str,
+    ) -> Self:
+        req = JinaEmbeddingRequest(
+            model=model,
+            truncate=True,
+            task=task,
+            embedding_type="base64",
+            input_content=[],
+        )
+        if text:
+            req.input_content.append(JinaInput(text=text))
+        if image:
+            req.input_content.append(JinaInput(image=image))
+        if image_url:
+            req.input_content.append(JinaInput(image=image_url))
+        return req
+
 
 class EmbeddingObject(msgspec.Struct, kw_only=True, omit_defaults=True):
     object: Literal["embedding"] = "embedding"

@@ -10,9 +10,11 @@ import msgspec
 from vechord.chunk import BaseChunker, GeminiChunker, RegexChunker
 from vechord.client import VechordClient, limit_to_transaction_buffer_conn
 from vechord.embedding import (
-    BaseEmbedding,
+    BaseMultiModalEmbedding,
+    BaseTextEmbedding,
     GeminiDenseEmbedding,
     JinaDenseEmbedding,
+    JinaMultiModalEmbedding,
     OpenAIDenseEmbedding,
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
@@ -111,7 +113,10 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
         "openai": OpenAIDenseEmbedding,
         "voyage": VoyageDenseEmbedding,
     },
-    "multimodal-emb": {"voyage": VoyageMultiModalEmbedding},
+    "multimodal-emb": {
+        "voyage": VoyageMultiModalEmbedding,
+        "jina": JinaMultiModalEmbedding,
+    },
     "ocr": {"gemini": GeminiExtractor, "llamaparse": LlamaParseExtractor},
     "rerank": {"cohere": CohereReranker},
     "graph": {"gemini": GeminiEntityRecognizer},
@@ -148,8 +153,8 @@ def find_uid_by_text(text: str, ents: list[_Entity]) -> Optional[UUID]:
 
 class DynamicPipeline(msgspec.Struct, kw_only=True):
     chunk: Optional[BaseChunker] = None
-    text_emb: Optional[BaseEmbedding] = None
-    multimodal_emb: Optional[BaseEmbedding] = None
+    text_emb: Optional[BaseTextEmbedding] = None
+    multimodal_emb: Optional[BaseMultiModalEmbedding] = None
     ocr: Optional[GeminiExtractor] = None
     rerank: Optional[CohereReranker] = None
     index: Optional[IndexOption] = None
