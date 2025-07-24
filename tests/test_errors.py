@@ -3,6 +3,7 @@ from vechord.errors import (
     DecodeStructuredOutputError,
     HTTPCallError,
     RequestError,
+    TimeoutError,
     UnexpectedResponseError,
     extract_safe_err_msg,
 )
@@ -22,3 +23,4 @@ def test_extracted_msg():
 
     assert "UNIVERSAL" in extract_safe_err_msg(APIKeyUnsetError("UNIVERSAL"))
     assert "leaked" in extract_safe_err_msg(RequestError("leaked"))
+    assert "timeout" in extract_safe_err_msg(TimeoutError("timeout"))

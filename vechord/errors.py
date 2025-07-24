@@ -44,10 +44,6 @@ class RequestError(VechordError):
 class TimeoutError(VechordError):
     """Raised when a request times out."""
 
-    def __init__(self, message: str):
-        self.message = message
-        super().__init__(self.message)
-
 
 def extract_safe_err_msg(exc: Exception) -> str:
     if not isinstance(exc, VechordError):
