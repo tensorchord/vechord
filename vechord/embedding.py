@@ -289,7 +289,7 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
         text: Optional[str] = None,
         image_url: Optional[str] = None,
     ):
-        return await self.query(
+        resp = await self.query(
             VoyageMultiModalEmbeddingRequest.build(
                 text=text,
                 image=image,
@@ -298,6 +298,7 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
                 model=self.model,
             )
         )
+        return resp.get_emb()
 
 
 class OpenAIDenseEmbedding(BaseTextEmbedding):
