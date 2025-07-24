@@ -15,7 +15,6 @@ from vechord.model import (
     VoyageEmbeddingRequest,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.model.voyage import VOYAGE_INPUT_TYPE
 from vechord.provider import (
     GeminiEmbeddingProvider,
     JinaEmbeddingProvider,
@@ -171,6 +170,7 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         model: Jina embedding model name, could be "jina-embeddings-v4"
         dim: embedding dimension, up to 2048
     """
+
     def __init__(self, model="jina-embeddings-v4", dim=2048):
         super().__init__(model, dim)
 
@@ -266,41 +266,22 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
     def vec_type(self) -> VecType:
         return VecType.DENSE
 
-    async def vectorize(self, text, input_type: VOYAGE_INPUT_TYPE = "query"):
-        return await self.vectorize_multimodal(text=text, input_type=input_type)
-
-    async def vectorize_multimodal(
-        self,
-        image: Optional[bytes] = None,
-        text: Optional[str] = None,
-        image_url: Optional[str] = None,
-        input_type: VOYAGE_INPUT_TYPE = "document",
-    ):
-        if not (image or text or image_url):
-            raise ValueError(
-                "At least one of image, text, or image_url must be provided"
-            )
-
-        resp = await self.query(
-            VoyageMultiModalEmbeddingRequest.build(
-                text=text,
-                image=image,
-                image_url=image_url,
-                input_type=input_type,
-                model=self.model,
-            )
-        )
-        return resp.get_emb()
-
     async def vectorize_multimodal_chunk(
         self,
         image: Optional[bytes] = None,
         text: Optional[str] = None,
         image_url: Optional[str] = None,
     ):
-        return await self.vectorize_multimodal(
-            image=image, text=text, image_url=image_url, input_type="document"
+        resp = await self.query(
+            VoyageMultiModalEmbeddingRequest.build(
+                text=text,
+                image=image,
+                image_url=image_url,
+                input_type="document",
+                model=self.model,
+            )
         )
+        return resp.get_emb()
 
     async def vectorize_multimodal_query(
         self,
@@ -308,8 +289,14 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
         text: Optional[str] = None,
         image_url: Optional[str] = None,
     ):
-        return await self.vectorize_multimodal(
-            image=image, text=text, image_url=image_url, input_type="query"
+        return await self.query(
+            VoyageMultiModalEmbeddingRequest.build(
+                text=text,
+                image=image,
+                image_url=image_url,
+                input_type="query",
+                model=self.model,
+            )
         )
 
 

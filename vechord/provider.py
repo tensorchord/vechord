@@ -13,7 +13,9 @@ from vechord.model import (
     GeminiGenerateResponse,
     JinaEmbeddingRequest,
     JinaEmbeddingResponse,
+    VoyageEmbeddingRequest,
     VoyageEmbeddingResponse,
+    VoyageMultiModalEmbeddingRequest,
 )
 from vechord.model.llamacloud import LlamaCloudParseRequest, LlamaCloudParseResponse
 from vechord.utils import (
@@ -164,7 +166,9 @@ class VoyageEmbeddingProvider(BaseProvider):
         self.encoder = msgspec.json.Encoder()
         self.decoder = msgspec.json.Decoder(VoyageEmbeddingResponse)
 
-    async def query(self, req: GeminiEmbeddingRequest) -> VoyageEmbeddingResponse:
+    async def query(
+        self, req: VoyageEmbeddingRequest | VoyageMultiModalEmbeddingRequest
+    ) -> VoyageEmbeddingResponse:
         """Query the Voyage embedding model with a request."""
         response = await self.client.post(self.url, content=self.encoder.encode(req))
         if response.is_error:
