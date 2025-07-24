@@ -47,3 +47,9 @@
 ```{include} ../../examples/graph.py
 :code: python
 ```
+
+## Dynamic pipeline example
+
+```{include} ../../examples/dynamic.py
+:code: python
+```

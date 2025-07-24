@@ -24,6 +24,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 
 - DockerHub: `tensorchord/vchord-suite:pg17-20250620`
 - GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250620`
+
 ## Features
 
 - [x] vector search with [RaBitQ][rabitq] (powered by [VectorChord][vectorchord])
@@ -56,6 +57,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 ## User Guide
 
 For more details, check our [API reference][document-api] and [User Guide][document-guide].
+
 ### Define the table
 
 ```python

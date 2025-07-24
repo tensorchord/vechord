@@ -384,8 +384,11 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
 
         retrieved: list[Chunk] = []
         if self.search.vector:
-            emb_cls = self.text_emb if self.text_emb else self.multimodal_emb
-            vec = await emb_cls.vectorize_query(query)
+            vec = (
+                await self.text_emb.vectorize_query(query)
+                if self.text_emb
+                else await self.multimodal_emb.vectorize_multimodal_query(text=query)
+            )
             retrieved.extend(
                 await vr.search_by_vector(
                     Chunk, vec, self.search.vector.topk, probe=self.search.vector.probe
