@@ -203,6 +203,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         self, request: RunRequest, vr: "VechordRegistry"
     ) -> RunAck | RunResponse:
         """Run the dynamic pipeline with the given request."""
+        vr.reset_namespace(request.name)
         if self.index:
             return await self.run_index(request, vr)
         elif self.search:
