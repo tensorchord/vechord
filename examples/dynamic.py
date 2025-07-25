@@ -67,7 +67,7 @@ async def main():
         dir = Path.home() / "Pictures"
         await ingest(dir.glob("*.jpg"))
         res = await search("cat")
-        for item in res:
+        for item in res.chunks:
             print("=>", file_uuids.get(item.doc_id, "Unknown file"))
 
 
