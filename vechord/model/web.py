@@ -7,7 +7,14 @@ import msgspec
 
 class ResourceRequest(msgspec.Struct, kw_only=True):
     kind: Literal[
-        "ocr", "chunk", "text-emb", "multimodal-emb", "rerank", "index", "search"
+        "ocr",
+        "chunk",
+        "text-emb",
+        "multimodal-emb",
+        "rerank",
+        "index",
+        "search",
+        "evaluate",
     ]
     provider: str
     args: dict[str, Any] = msgspec.field(default_factory=dict)
