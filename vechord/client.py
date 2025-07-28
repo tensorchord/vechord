@@ -76,7 +76,7 @@ class VechordClient:
         async with self.pool.connection() as conn:
             yield conn
 
-    async def get_ns(self):
+    def get_ns(self):
         """Get the current namespace.
 
         If it's not set by context manager, return the default namespace.
