@@ -180,6 +180,8 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             raise RequestError("Vector index is required if `index` is specified")
         if self.search and not (self.text_emb or self.multimodal_emb):
             raise RequestError("Search requires at least one embedding provider")
+        if self.search and self.multimodal_emb and self.evaluate:
+            raise RequestError("`evaluate` is not supported for `multimodal-emb`.")
 
     @classmethod
     def from_steps(cls, steps: list[ResourceRequest]) -> Self:
