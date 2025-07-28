@@ -81,10 +81,7 @@ class VechordClient:
 
         If it's not set by context manager, return the default namespace.
         """
-        ns = current_namespace.get()
-        if ns is None:
-            ns = self.ns
-        return ns
+        return current_namespace.get() or self.ns
 
     async def init_extension(self):
         """Initialize the required PostgreSQL extensions and set the search PATH.

@@ -53,6 +53,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
 - [anthropic.py](examples/anthropic.py): contextual retrieval with the Anthropic's Tutorial example
 - [hybrid.py](examples/hybrid.py): hybrid search that rerank the results from vector search with keyword search
 - [graph.py](examples/graph.py): graph-like entity-relation retrieval
+- [dynamic.py](examples/dynamic.py): run arbitrary pipelines with dynamic steps
 
 ## User Guide
 
