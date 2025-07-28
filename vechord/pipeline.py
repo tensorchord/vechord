@@ -8,7 +8,11 @@ from uuid import UUID
 import msgspec
 
 from vechord.chunk import BaseChunker, GeminiChunker, RegexChunker
-from vechord.client import VechordClient, limit_to_transaction_buffer_conn
+from vechord.client import (
+    VechordClient,
+    limit_to_transaction_buffer_conn,
+    set_namespace,
+)
 from vechord.embedding import (
     BaseMultiModalEmbedding,
     BaseTextEmbedding,
@@ -203,13 +207,13 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         self, request: RunRequest, vr: "VechordRegistry"
     ) -> RunAck | RunResponse:
         """Run the dynamic pipeline with the given request."""
-        vr.reset_namespace(request.name)
-        if self.index:
-            return await self.run_index(request, vr)
-        elif self.search:
-            return await self.run_search(request, vr)
-        else:
-            raise RequestError("No valid pipeline configuration found")
+        async with set_namespace(request.name):
+            resp = (
+                await self.run_index(request, vr)
+                if self.index
+                else await self.run_search(request, vr)
+            )
+            return resp
 
     @staticmethod
     def _convert_from_extracted_graph(
