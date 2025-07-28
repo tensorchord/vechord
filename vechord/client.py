@@ -279,6 +279,15 @@ class VechordClient:
                     )
                 )
 
+    @staticmethod
+    def get_probe(probe: Optional[int], index: VectorIndex | MultiVectorIndex) -> str:
+        """Assume the `index.lists` is Optional[int]."""
+        if probe:
+            return str(probe)
+        if index.lists is None:
+            return ""
+        return str(math.ceil(index.lists / 16))
+
     async def query_vec(  # noqa: PLR0913
         self,
         name: str,
@@ -289,14 +298,8 @@ class VechordClient:
         probe: Optional[int] = None,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        if (
-            probe is None
-            and vec_col.index.lists is not None
-            and vec_col.index.lists > 1
-        ):
-            probe = math.ceil(vec_col.index.lists / 16)
         set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
-            sql.Literal(probe or "")
+            sql.Literal(self.get_probe(probe, vec_col.index))
         )
         async with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -325,14 +328,8 @@ class VechordClient:
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        if (
-            probe is None
-            and multivec_col.index.lists is not None
-            and multivec_col.index.lists > 1
-        ):
-            probe = math.ceil(multivec_col.index.lists / 16)
         set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
-            sql.Literal(probe or "")
+            sql.Literal(self.get_probe(probe, multivec_col.index))
         )
         set_refine = sql.SQL("SET LOCAL vchordrq.maxsim_refine = {};").format(
             sql.Literal(maxsim_refine)
