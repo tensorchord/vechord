@@ -83,7 +83,8 @@ class VechordClient:
         """
         ns = current_namespace.get()
         if ns is None:
-            return self.ns
+            ns = self.ns
+        return ns
 
     async def init_extension(self):
         """Initialize the required PostgreSQL extensions and set the search PATH.

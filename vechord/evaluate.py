@@ -179,7 +179,10 @@ format of: a single integer without any reasoning.
     ) -> dict[str, float]:
         """Calculate the Precision@K and Mean Reciprocal Rank (MRR)."""
         if not query or not passages or all(not p.strip() for p in passages):
-            raise RequestError("Query and passages must be non-empty strings.")
+            raise RequestError(
+                "Query must be non-empty and passages must contain at least "
+                "one non-empty string."
+            )
         scores = [await self.estimate(query, p) for p in passages]
         is_relevant = [score >= self.relevant_threshold for score in scores]
         metric = defaultdict(float)
