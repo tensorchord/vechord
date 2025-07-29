@@ -5,7 +5,7 @@ from typing import Sequence
 import msgspec
 import pytrec_eval
 
-from vechord.errors import DecodeStructuredOutputError
+from vechord.errors import DecodeStructuredOutputError, RequestError
 from vechord.model import GeminiGenerateRequest, RetrievedChunk, UMBRELAScore
 from vechord.provider import GeminiGenerateProvider
 
@@ -115,10 +115,15 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
     - paper: https://arxiv.org/pdf/2406.06519
     """
 
-    def __init__(self, model: str = "gemini-2.5-flash", relevant_threshold: int = 2):
+    def __init__(
+        self,
+        model: str = "gemini-2.5-flash",
+        relevant_threshold: int = 2,
+        k_values: Sequence[int] = (3, 5, 10),
+    ):
         super().__init__(model)
         self.relevant_threshold = relevant_threshold
-        self.k_values = (3, 5, 10)
+        self.k_values = k_values
         self.score_schema = msgspec.json.schema(UMBRELAScore)
         self.prompt = """
 Given a query and a passage, you must provide a score on an
@@ -153,6 +158,8 @@ format of: a single integer without any reasoning.
         return f"gemini_umbrela_{self.model}"
 
     async def estimate(self, query: str, passage: str) -> int:
+        if not passage:
+            return 0
         content = self.prompt.format(query=query, passage=passage)
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_structure_response(
@@ -171,6 +178,11 @@ format of: a single integer without any reasoning.
         self, query: str, passages: list[str]
     ) -> dict[str, float]:
         """Calculate the Precision@K and Mean Reciprocal Rank (MRR)."""
+        if not query or not passages or all(not p.strip() for p in passages):
+            raise RequestError(
+                "Query must be non-empty and passages must contain at least "
+                "one non-empty string."
+            )
         scores = [await self.estimate(query, p) for p in passages]
         is_relevant = [score >= self.relevant_threshold for score in scores]
         metric = defaultdict(float)

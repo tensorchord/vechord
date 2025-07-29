@@ -24,7 +24,13 @@ from vechord.model.voyage import (
     VoyageEmbeddingResponse,
     VoyageMultiModalEmbeddingRequest,
 )
-from vechord.model.web import InputType, ResourceRequest, RunAck, RunRequest
+from vechord.model.web import (
+    InputType,
+    ResourceRequest,
+    RunAck,
+    RunRequest,
+    RunResponse,
+)
 
 __all__ = [
     "Document",
@@ -45,6 +51,7 @@ __all__ = [
     "RetrievedChunk",
     "RunAck",
     "RunRequest",
+    "RunResponse",
     "SparseEmbedding",
     "UMBRELAScore",
     "VoyageEmbeddingRequest",

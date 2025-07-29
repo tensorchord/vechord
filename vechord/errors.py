@@ -20,7 +20,7 @@ class HTTPCallError(VechordError):
         super().__init__(self.message)
 
     def __str__(self):
-        return "Failed to call external LLM/Embedding services"
+        return f"Failed to call external LLM/Embedding services: {self.message}"
 
 
 class DecodeStructuredOutputError(VechordError):

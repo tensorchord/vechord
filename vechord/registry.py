@@ -84,10 +84,6 @@ class VechordRegistry:
         """Falcon ASGI middleware lifespan hook."""
         await self.__aexit__(None, None, None)
 
-    def reset_namespace(self, namespace: str):
-        self.ns = namespace
-        self.client.ns = namespace
-
     async def init_table_index(self, tables: Optional[Iterable[type[Table]]] = None):
         if tables is None:
             tables = self.tables

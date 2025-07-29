@@ -8,7 +8,11 @@ from uuid import UUID
 import msgspec
 
 from vechord.chunk import BaseChunker, GeminiChunker, RegexChunker
-from vechord.client import VechordClient, limit_to_transaction_buffer_conn
+from vechord.client import (
+    VechordClient,
+    limit_to_transaction_buffer_conn,
+    set_namespace,
+)
 from vechord.embedding import (
     BaseMultiModalEmbedding,
     BaseTextEmbedding,
@@ -21,6 +25,7 @@ from vechord.embedding import (
 )
 from vechord.entity import GeminiEntityRecognizer
 from vechord.errors import RequestError
+from vechord.evaluate import GeminiUMBRELAEvaluator
 from vechord.extract import GeminiExtractor, LlamaParseExtractor
 from vechord.model import (
     GraphEntity,
@@ -29,6 +34,7 @@ from vechord.model import (
     ResourceRequest,
     RunAck,
     RunRequest,
+    RunResponse,
 )
 from vechord.rerank import CohereReranker
 from vechord.spec import (
@@ -122,6 +128,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
     "graph": {"gemini": GeminiEntityRecognizer},
     "index": {"vectorchord": IndexOption},
     "search": {"vectorchord": SearchOption},
+    "evaluate": {"gemini": GeminiUMBRELAEvaluator},
 }
 
 
@@ -160,6 +167,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
     index: Optional[IndexOption] = None
     search: Optional[SearchOption] = None
     graph: Optional[GeminiEntityRecognizer] = None
+    evaluate: Optional[GeminiUMBRELAEvaluator] = None
 
     def __post_init__(self):
         if not (self.text_emb or self.multimodal_emb):
@@ -172,6 +180,8 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             raise RequestError("Vector index is required if `index` is specified")
         if self.search and not (self.text_emb or self.multimodal_emb):
             raise RequestError("Search requires at least one embedding provider")
+        if self.search and self.multimodal_emb and self.evaluate:
+            raise RequestError("`evaluate` is not supported for `multimodal-emb`.")
 
     @classmethod
     def from_steps(cls, steps: list[ResourceRequest]) -> Self:
@@ -195,14 +205,17 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 calls[(step.kind).replace("-", "_")] = provider(**args)
         return msgspec.convert(calls, DynamicPipeline)
 
-    async def run(self, request: RunRequest, vr: "VechordRegistry"):
+    async def run(
+        self, request: RunRequest, vr: "VechordRegistry"
+    ) -> RunAck | RunResponse:
         """Run the dynamic pipeline with the given request."""
-        if self.index:
-            return await self.run_index(request, vr)
-        elif self.search:
-            return await self.run_search(request, vr)
-        else:
-            raise RequestError("No valid pipeline configuration found")
+        async with set_namespace(request.name):
+            resp = (
+                await self.run_index(request, vr)
+                if self.index
+                else await self.run_search(request, vr)
+            )
+            return resp
 
     @staticmethod
     def _convert_from_extracted_graph(
@@ -374,7 +387,9 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             rel.vec = await self.text_emb.vectorize_chunk(f"{rel.description}")
             await vr.insert(rel)
 
-    async def run_search(self, request: RunRequest, vr: "VechordRegistry"):
+    async def run_search(
+        self, request: RunRequest, vr: "VechordRegistry"
+    ) -> RunResponse:
         query = request.data.decode("utf-8")
 
         # for type hint and compatibility
@@ -387,32 +402,34 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         class Relation(_Relation):
             pass
 
-        retrieved: list[Chunk] = []
+        resp = RunResponse()
         if self.search.vector:
             vec = (
                 await self.text_emb.vectorize_query(query)
                 if self.text_emb
                 else await self.multimodal_emb.vectorize_multimodal_query(text=query)
             )
-            retrieved.extend(
+            resp.extend(
                 await vr.search_by_vector(
                     Chunk, vec, self.search.vector.topk, probe=self.search.vector.probe
                 )
             )
         if self.search.keyword:
-            retrieved.extend(
+            resp.extend(
                 await vr.search_by_keyword(Chunk, query, self.search.keyword.topk)
             )
         if self.search.graph:
-            retrieved.extend(
-                await self.graph_search(query, Chunk, Entity, Relation, vr)
-            )
+            resp.extend(await self.graph_search(query, Chunk, Entity, Relation, vr))
         if self.rerank:
-            indices = await self.rerank.rerank(
-                query, [chunk.text for chunk in retrieved]
+            indices = await self.rerank.rerank(query, [chunk.text for chunk in resp])
+            resp.reorder(indices)
+
+        if self.evaluate:
+            resp.metrics = await self.evaluate.evaluate_with_estimation(
+                query, [chunk.text for chunk in resp.chunks]
             )
-            retrieved = [retrieved[i] for i in indices]
-        return retrieved
+
+        return resp
 
     async def graph_search(
         self,

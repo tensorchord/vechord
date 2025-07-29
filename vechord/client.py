@@ -36,6 +36,20 @@ async def limit_to_transaction_buffer_conn(conn: AsyncConnection):
         select_transaction_buffer_conn.reset(token)
 
 
+current_namespace: ContextVar[Optional[str]] = ContextVar(
+    "current_namespace", default=None
+)
+
+
+@contextlib.asynccontextmanager
+async def set_namespace(ns: str):
+    ns = current_namespace.set(ns)
+    try:
+        yield
+    finally:
+        current_namespace.reset(ns)
+
+
 class VechordClient:
     """A PostgreSQL client to access the database.
 
@@ -61,6 +75,13 @@ class VechordClient:
 
         async with self.pool.connection() as conn:
             yield conn
+
+    def get_ns(self):
+        """Get the current namespace.
+
+        If it's not set by context manager, return the default namespace.
+        """
+        return current_namespace.get() or self.ns
 
     async def init_extension(self):
         """Initialize the required PostgreSQL extensions and set the search PATH.
@@ -93,14 +114,14 @@ class VechordClient:
         columns = sql.SQL(", ").join(
             sql.SQL("{col} {typ}").format(
                 col=sql.Identifier(col),
-                typ=sql.SQL(typ.format(namespace=self.ns)),
+                typ=sql.SQL(typ.format(namespace=self.get_ns())),
             )
             for col, typ in schema
         )
         async with self.get_connection() as conn:
             await conn.execute(
                 sql.SQL("CREATE TABLE IF NOT EXISTS {table} ({columns});").format(
-                    table=sql.Identifier(f"{self.ns}_{name}"), columns=columns
+                    table=sql.Identifier(f"{self.get_ns()}_{name}"), columns=columns
                 )
             )
 
@@ -127,7 +148,7 @@ class VechordClient:
                 "({column}) {config}"
             ).format(
                 index_name=sql.Identifier(self._index_name(name, column)),
-                table=sql.Identifier(f"{self.ns}_{name}"),
+                table=sql.Identifier(f"{self.get_ns()}_{name}"),
                 column=sql.Identifier(column.name),
                 config=sql.SQL(column.index.config()),
             )
@@ -137,7 +158,7 @@ class VechordClient:
                 "USING {index} ({column} {op_name})"
             ).format(
                 index_name=sql.Identifier(self._index_name(name, column)),
-                table=sql.Identifier(f"{self.ns}_{name}"),
+                table=sql.Identifier(f"{self.get_ns()}_{name}"),
                 index=sql.SQL(column.index.index),
                 column=sql.Identifier(column.name),
                 op_name=sql.SQL(column.index.op_name),
@@ -150,7 +171,7 @@ class VechordClient:
             await conn.execute(query)
 
     def _index_name(self, name: str, column: IndexColumn):
-        return f"{self.ns}_{name}_{column.name}_{column.index.name}"
+        return f"{self.get_ns()}_{name}_{column.name}_{column.index.name}"
 
     def _build_conditions(self, kvs: dict[str, Any]):
         if not kvs:
@@ -188,7 +209,7 @@ class VechordClient:
         columns = sql.SQL(", ").join(map(sql.Identifier, raw_columns))
         query = sql.SQL("SELECT {columns} FROM {table}").format(
             columns=columns,
-            table=sql.Identifier(f"{self.ns}_{name}"),
+            table=sql.Identifier(f"{self.get_ns()}_{name}"),
         )
         if kvs:
             query += sql.SQL(" WHERE {condition}").format(
@@ -219,7 +240,7 @@ class VechordClient:
         query = sql.SQL(
             "INSERT INTO {table} ({columns}) VALUES ({placeholders});"
         ).format(
-            table=sql.Identifier(f"{self.ns}_{name}"),
+            table=sql.Identifier(f"{self.get_ns()}_{name}"),
             columns=columns,
             placeholders=placeholders,
         )
@@ -231,7 +252,7 @@ class VechordClient:
         query = sql.SQL(
             "COPY {table} ({columns}) FROM STDIN WITH (FORMAT BINARY)"
         ).format(
-            table=sql.Identifier(f"{self.ns}_{name}"),
+            table=sql.Identifier(f"{self.get_ns()}_{name}"),
             columns=columns,
         )
         async with self.get_connection() as conn:
@@ -246,7 +267,7 @@ class VechordClient:
             if kvs:
                 await conn.execute(
                     sql.SQL("DELETE FROM {table} WHERE {condition};").format(
-                        table=sql.Identifier(f"{self.ns}_{name}"),
+                        table=sql.Identifier(f"{self.get_ns()}_{name}"),
                         condition=self._build_conditions(kvs),
                     ),
                     kvs,
@@ -254,9 +275,18 @@ class VechordClient:
             else:
                 await conn.execute(
                     sql.SQL("DELETE FROM {table};").format(
-                        table=sql.Identifier(f"{self.ns}_{name}")
+                        table=sql.Identifier(f"{self.get_ns()}_{name}")
                     )
                 )
+
+    @staticmethod
+    def get_probe(probe: Optional[int], index: VectorIndex | MultiVectorIndex) -> str:
+        """Assume the `index.lists` is Optional[int]."""
+        if probe:
+            return str(probe)
+        if index.lists is None:
+            return ""
+        return str(math.ceil(index.lists / 16))
 
     async def query_vec(  # noqa: PLR0913
         self,
@@ -268,14 +298,8 @@ class VechordClient:
         probe: Optional[int] = None,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        if (
-            probe is None
-            and vec_col.index.lists is not None
-            and vec_col.index.lists > 1
-        ):
-            probe = math.ceil(vec_col.index.lists / 16)
         set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
-            sql.Literal(probe or "")
+            sql.Literal(self.get_probe(probe, vec_col.index))
         )
         async with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -284,7 +308,7 @@ class VechordClient:
                 sql.SQL(
                     "SELECT {columns} FROM {table} ORDER BY {vec_col} {op} %s LIMIT %s;"
                 ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    table=sql.Identifier(f"{self.get_ns()}_{name}"),
                     columns=columns,
                     op=sql.SQL(vec_col.index.op_symbol),
                     vec_col=sql.Identifier(vec_col.name),
@@ -304,14 +328,8 @@ class VechordClient:
         topk: int = 10,
     ):
         columns = sql.SQL(", ").join(map(sql.Identifier, return_fields))
-        if (
-            probe is None
-            and multivec_col.index.lists is not None
-            and multivec_col.index.lists > 1
-        ):
-            probe = math.ceil(multivec_col.index.lists / 16)
         set_probe = sql.SQL("SET LOCAL vchordrq.probes = {};").format(
-            sql.Literal(probe or "")
+            sql.Literal(self.get_probe(probe, multivec_col.index))
         )
         set_refine = sql.SQL("SET LOCAL vchordrq.maxsim_refine = {};").format(
             sql.Literal(maxsim_refine)
@@ -324,7 +342,7 @@ class VechordClient:
                 sql.SQL(
                     "SELECT {columns} FROM {table} ORDER BY {multivec_col} @# %s LIMIT %s;"
                 ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    table=sql.Identifier(f"{self.get_ns()}_{name}"),
                     columns=columns,
                     multivec_col=sql.Identifier(multivec_col.name),
                 ),
@@ -348,7 +366,7 @@ class VechordClient:
                     "SELECT {columns} FROM {table} ORDER BY {keyword_col} <&> "
                     "to_bm25query({index}, tokenize(%s, {tokenizer})) LIMIT %s;"
                 ).format(
-                    table=sql.Identifier(f"{self.ns}_{name}"),
+                    table=sql.Identifier(f"{self.get_ns()}_{name}"),
                     columns=columns,
                     index=sql.Literal(self._index_name(name, keyword_col)),
                     tokenizer=sql.Literal(tokenizer),
@@ -362,6 +380,6 @@ class VechordClient:
         async with self.get_connection() as conn:
             await conn.execute(
                 sql.SQL("DROP TABLE IF EXISTS {table} CASCADE;").format(
-                    table=sql.Identifier(f"{self.ns}_{name}")
+                    table=sql.Identifier(f"{self.get_ns()}_{name}")
                 )
             )
