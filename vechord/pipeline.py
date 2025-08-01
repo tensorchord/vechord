@@ -70,16 +70,19 @@ class IndexOption:
 
 
 class VectorSearchOption(msgspec.Struct, kw_only=True):
-    topk: int
+    topk: Optional[int] = 10
     probe: Optional[int] = None
 
 
 class KeywordSearchOption(msgspec.Struct, kw_only=True):
-    topk: int
+    topk: Optional[int] = 10
 
 
 class GraphSearchOption(msgspec.Struct, kw_only=True):
-    topk: int
+    topk: Optional[int] = 10
+    "final topk for the search result"
+    similar_k: Optional[int] = 10
+    "how many similar entities/relationships to retrieve during the graph search"
 
 
 class SearchOption:
@@ -271,6 +274,10 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         # run the pipeline
         sentences, chunks, ents, rels = [], [], [], []
         doc = DefaultDocument(text="")
+        # Create a fake chunk to ref the document by doc_id.
+        # This is useful because graph entities and relations will ref the chunk uuids
+        # and image/pdf doesn't have real chunks.
+        fake_chunk = Chunk(doc_id=doc.uid, text="", Keyword=None, vec=None)
         if self.multimodal_emb:
             chunks.append(
                 Chunk(
@@ -293,7 +300,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             elif self.graph:
                 img_ents, img_rels = await self.graph.recognize_image(request.data)
                 conv_ents, conv_rels = self._convert_from_extracted_graph(
-                    doc.uid, img_ents, img_rels, Entity, Relation
+                    fake_chunk.uid, img_ents, img_rels, Entity, Relation
                 )
                 ents.extend(conv_ents)
                 rels.extend(conv_rels)
@@ -332,6 +339,9 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             for chunk in chunks:
                 await vr.insert(chunk)
             if self.index.graph:
+                if request.input_type is not InputType.TEXT:
+                    # insert the fake chunk for image/pdf
+                    await vr.insert(fake_chunk)
                 await self.graph_insert(
                     ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
                 )
@@ -445,7 +455,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             similar_rels = await vr.search_by_vector(
                 rel_cls,
                 await self.text_emb.vectorize_query(rel_text),
-                topk=self.search.graph.topk,
+                topk=self.search.graph.similar_k,
             )
             ent_uuids = deduplicate_uid(
                 itertools.chain.from_iterable(
@@ -464,7 +474,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         similar_ents = await vr.search_by_vector(
             ent_cls,
             await self.text_emb.vectorize_query(ent_text),
-            topk=self.search.graph.topk,
+            topk=self.search.graph.similar_k,
         )
         chunk_uuids = deduplicate_uid(
             itertools.chain.from_iterable(ent.chunk_uuids for ent in similar_ents),
@@ -473,7 +483,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             chunk_cls.partial_init(uid=AnyOf(chunk_uuids)),
             fields=("text", "doc_id", "uid"),
         )
-        return chunks
+        return chunks[: self.search.graph.topk]
 
 
 def deduplicate_uid(uuids: Iterable[UUID], limit: Optional[int] = None) -> list[UUID]:
