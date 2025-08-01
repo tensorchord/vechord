@@ -109,23 +109,7 @@ refine the query and avoid ambiguity.
         return resp.get_text().strip()
 
 
-class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
-    """Gemini evaluator with the Bing RELevance Assessor (UMBRELA) metric.
-
-    - paper: https://arxiv.org/pdf/2406.06519
-    """
-
-    def __init__(
-        self,
-        model: str = "gemini-2.5-flash",
-        relevant_threshold: int = 2,
-        k_values: Sequence[int] = (3, 5, 10),
-    ):
-        super().__init__(model)
-        self.relevant_threshold = relevant_threshold
-        self.k_values = k_values
-        self.score_schema = msgspec.json.schema(UMBRELAScore)
-        self.prompt = """
+UMBRELA_PROMPT = """
 Given a query and a passage, you must provide a score on an
 integer scale of 0 to 3 with the following meanings:
 0 = represent that the passage has nothing to do with the query,
@@ -142,8 +126,6 @@ passage presents something very important related to the entire
 topic but also has some extra information and category 3 if the
 passage only and entirely refers to the topic. If none of the
 above satisfies give it category 0.
-Query: {query}
-Passage: {passage}
 Split this problem into steps:
 Consider the underlying intent of the search.
 Measure how well the content matches a likely intent of the query (M).
@@ -153,6 +135,30 @@ and decide on a final score (O). Final score must be an integer.
 Do not provide any code in result. Provide each score in the
 format of: a single integer without any reasoning.
 """
+UMBRELA_PROMPT_FIELD = """
+Query: {query}
+Passage: {passage}
+"""
+
+
+class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
+    """Gemini evaluator with the Bing RELevance Assessor (UMBRELA) metric.
+
+    - paper: https://arxiv.org/pdf/2406.06519
+    """
+
+    def __init__(
+        self,
+        model: str = "gemini-2.5-flash",
+        prompt: str = UMBRELA_PROMPT,
+        relevant_threshold: int = 2,
+        k_values: Sequence[int] = (3, 5, 10),
+    ):
+        super().__init__(model)
+        self.relevant_threshold = relevant_threshold
+        self.k_values = k_values
+        self.score_schema = msgspec.json.schema(UMBRELAScore)
+        self.prompt = prompt + UMBRELA_PROMPT_FIELD
 
     def name(self) -> str:
         return f"gemini_umbrela_{self.model}"

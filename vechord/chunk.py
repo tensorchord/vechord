@@ -102,18 +102,31 @@ class SpacyChunker(BaseChunker):
         return [sent.text for sent in self.nlp(text).sents]
 
 
-class GeminiChunker(BaseChunker, GeminiGenerateProvider):
-    """A semantic chunker based on Gemini."""
-
-    def __init__(self, model: str = "gemini-2.5-flash", size: int = 1536):
-        super().__init__(model)
-        self.prompt = f"""
+CHUNK_PROMPT = """
 You are an expert text chunker, skilled at dividing documents into meaningful 
 segments while respecting token limits. Your goal is to break down a document into 
 chunks that are as semantically coherent as possible, ensuring no chunk exceeds a 
-specified token length. Maintain document order. The maximum token length is {size}.
-The return format is a list of chunk strings.The document is as follows:
+specified token length. Maintain document order.
 """
+CHUNK_PROMPT_FIELD = """
+The return format is a list of chunk strings.
+The maximum token length is {size} per chunk.
+The document is as follows: <document>\n{document}\n</document>
+"""
+
+
+class GeminiChunker(BaseChunker, GeminiGenerateProvider):
+    """A semantic chunker based on Gemini."""
+
+    def __init__(
+        self,
+        model: str = "gemini-2.5-flash",
+        size: int = 1536,
+        prompt: str = CHUNK_PROMPT,
+    ):
+        super().__init__(model)
+        self.size = size
+        self.prompt = prompt + CHUNK_PROMPT_FIELD
         self.output_token_limit = 65536
         self.regex_chunker = RegexChunker(
             size=self.output_token_limit,
@@ -140,14 +153,14 @@ The return format is a list of chunk strings.The document is as follows:
         tokens = len(text)
         if tokens <= self.output_token_limit:
             chunks = await self.structure_query(
-                self.prompt + f"\n<document> {text} </document>"
+                self.prompt.format(size=self.size, document=text)
             )
             return chunks
 
         all_chunks = []
         for chunk in self.regex_chunker.segment(text):
             chunks = await self.structure_query(
-                self.prompt + f"\n<document> {chunk} </document>"
+                self.prompt.format(size=self.size, document=chunk)
             )
             all_chunks.extend(chunks)
         return all_chunks
