@@ -635,8 +635,13 @@ class Table(Storage):
                 if v is not msgspec.UNSET
             }
         # ignore default values
+        # `msgspec` use `NODEFAULT` to fill in the blank when [TODO: cases].
+        # Otherwise, there is an offset for the defaults, so we need to pad from
+        # the front.
+        if len(defaults) < len(fields):
+            defaults = (len(fields) - len(defaults)) * (msgspec.NODEFAULT,) + defaults
         res = {}
-        for k, d in zip(fields, defaults, strict=False):
+        for k, d in zip(fields, defaults, strict=True):
             v = getattr(self, k)
             if v is not msgspec.UNSET and (d is msgspec.NODEFAULT or v is not d):
                 res[k] = v
@@ -683,7 +688,7 @@ def create_chunk_with_dim(dim: int) -> Type[_DefaultChunk]:
 
     DenseVector = Vector[dim]
 
-    class DefaultChunk(_DefaultChunk):
+    class DefaultChunk(_DefaultChunk, kw_only=True):
         """A chunk table class with a specific vector dimension."""
 
         vec: DenseVector  # type: ignore

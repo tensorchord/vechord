@@ -1,12 +1,13 @@
 import contextlib
 import math
+from contextlib import suppress
 from contextvars import ContextVar
 from typing import Any, Optional, Sequence
 
 import numpy as np
 from pgvector.psycopg import register_vector_async
 from psycopg import AsyncConnection, sql
-from psycopg.errors import DatabaseError
+from psycopg.errors import DatabaseError, UniqueViolation
 from psycopg_pool import AsyncConnectionPool
 
 from vechord.spec import (
@@ -119,11 +120,12 @@ class VechordClient:
             for col, typ in schema
         )
         async with self.get_connection() as conn:
-            await conn.execute(
-                sql.SQL("CREATE TABLE IF NOT EXISTS {table} ({columns});").format(
-                    table=sql.Identifier(f"{self.get_ns()}_{name}"), columns=columns
+            with suppress(UniqueViolation):
+                await conn.execute(
+                    sql.SQL("CREATE TABLE IF NOT EXISTS {table} ({columns});").format(
+                        table=sql.Identifier(f"{self.get_ns()}_{name}"), columns=columns
+                    )
                 )
-            )
 
     async def create_tokenizer(self):
         async with self.get_connection() as conn:
@@ -168,7 +170,8 @@ class VechordClient:
                     config=sql.SQL(config)
                 )
         async with self.get_connection() as conn:
-            await conn.execute(query)
+            with suppress(UniqueViolation):
+                await conn.execute(query)
 
     def _index_name(self, name: str, column: IndexColumn):
         return f"{self.get_ns()}_{name}_{column.name}_{column.index.name}"

@@ -299,7 +299,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 rels.extend(conv_rels)
             else:
                 raise RequestError(
-                    f"No OCR provider for input type: {request.input_type}"
+                    f"No OCR or Graph provider for input type: {request.input_type}"
                 )
 
             if self.chunk:
