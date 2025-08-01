@@ -98,6 +98,32 @@ def test_table_todict():
     assert values["keyword"] == "hello"
     assert values["uid"], values
 
+    # len(__struct_fields__) == len(__struct_defaults__)
+    title = "Test Document"
+    text = "This is a test document."
+    doc = DefaultDocument(title=title, text=text)
+    assert len(DefaultDocument.fields()) == len(DefaultDocument.__struct_defaults__)
+    doc_value = doc.todict()
+
+    assert len(doc_value) == len(DefaultDocument.fields())
+    assert doc_value["uid"]
+    assert doc_value["title"] == title
+    assert doc_value["text"] == text
+    assert doc_value["created_at"]
+
+    # len(__struct_fields__) != len(__struct_defaults__)
+    class ReDocument(DefaultDocument):
+        title: str
+
+    doc = ReDocument(title=title, text=text)
+    assert len(ReDocument.fields()) == len(ReDocument.__struct_defaults__) + 1
+    doc_value = doc.todict()
+    assert len(doc_value) == len(ReDocument.fields())
+    assert doc_value["uid"]
+    assert doc_value["title"] == title
+    assert doc_value["text"] == text
+    assert doc_value["created_at"]
+
 
 def test_default_chunk():
     dim = 1024
