@@ -150,7 +150,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
         self.prompt = prompt + RECOGNIZE_PROMPT_FIELD
 
     async def recognize(self, text) -> list[GraphEntity]:
-        prompt = "Given the text document." + self.prompt
+        prompt = f"Given the text document, {self.prompt}"
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_structure_response(
                 prompt=prompt.format(text),
@@ -186,7 +186,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
         """Recognize entities & relations from the image."""
         prompt = (
             "Given the image, first summarize it and extract readable text."
-            + self.prompt
+            f"{self.prompt}"
         )
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_data_structure_resp(
@@ -201,7 +201,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     async def recognize_with_relations(
         self, text
     ) -> tuple[list[GraphEntity], list[GraphRelation]]:
-        prompt = "Given the text document." + self.prompt
+        prompt = f"Given the text document, {self.prompt}"
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_structure_response(
                 prompt=prompt.format(text=text),
