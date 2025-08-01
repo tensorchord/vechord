@@ -129,6 +129,13 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
         return ents, relations
 
 
+RECOGNIZE_PROMPT = """
+Extract meaningful named entities and the possible relations between them.
+Entity could be person, location, org, event or category.
+"""
+RECOGNIZE_PROMPT_FIELD = """\n<document>\n{text}\n</document>\n"""
+
+
 class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     """Entity recognizer using Gemini API.
 
@@ -138,18 +145,12 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     Gemini also generates the JSON schema from the pydantic model.
     """
 
-    def __init__(self, model: str = "gemini-2.5-flash"):
+    def __init__(self, model: str = "gemini-2.5-flash", prompt: str = RECOGNIZE_PROMPT):
         super().__init__(model)
+        self.prompt = prompt + RECOGNIZE_PROMPT_FIELD
 
     async def recognize(self, text) -> list[GraphEntity]:
-        prompt = (
-            "Given the text document, identify and extract all the entities, return the JSON "
-            "format with the following fields: "
-            "- text: the entity text "
-            "- label: the entity type (e.g., PER, ORG, LOC, TIME, GPE, VEH etc.) "
-            "- description: a brief description of the entity in the current context "
-            "\n<document>\n{text}\n</document>\n"
-        )
+        prompt = f"Given the text document, {self.prompt}"
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_structure_response(
                 prompt=prompt.format(text),
@@ -184,12 +185,8 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     ) -> tuple[list[GraphEntity], list[GraphRelation]]:
         """Recognize entities & relations from the image."""
         prompt = (
-            "Given the image, extract the meaningful entities and their relations "
-            "between them. Entity could be person, location, org, event or category. "
-            "Return a list of relations with source and target entities like: "
-            "- source: the source entity (text, label and description) "
-            "- target: the target entity (text, label and description) "
-            "- description: a brief description of the relation in the current context "
+            "Given the image, first summarize it and extract readable text."
+            f"{self.prompt}"
         )
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_data_structure_resp(
@@ -204,15 +201,7 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
     async def recognize_with_relations(
         self, text
     ) -> tuple[list[GraphEntity], list[GraphRelation]]:
-        prompt = (
-            "Given the text document, extract entities and the possible relations "
-            "between them. Entity could be person, location, org, event or category. "
-            "Return a list of relations with source and target entities like: "
-            "- source: the source entity (text, label and description) "
-            "- target: the target entity (text, label and description) "
-            "- description: a brief description of the relation in the current context "
-            "\n<document>\n{text}\n</document>\n"
-        )
+        prompt = f"Given the text document, {self.prompt}"
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_structure_response(
                 prompt=prompt.format(text=text),

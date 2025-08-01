@@ -88,6 +88,18 @@ class SimpleExtractor(BaseExtractor):
         return "\n".join(t for t in parser.content if t)
 
 
+EXTRACT_PDF_PROMPT = """
+Extract the main content from the PDF document. Ensure to exclude any
+metadata, headers, footers, or any other non-essential information.
+Return the extracted content as it appears in the document, without
+any additional modification, summarization or interpretation.
+"""
+EXTRACT_IMAGE_PROMPT = """
+Extract the visible text from the image, generate a concise caption
+describing the image's content or scene, return the text with caption.
+"""
+
+
 class GeminiExtractor(SimpleExtractor, GeminiGenerateProvider):
     """Extract text with Gemini model.
 
@@ -96,18 +108,9 @@ class GeminiExtractor(SimpleExtractor, GeminiGenerateProvider):
         - Image: less than **20 MB** in size, larger images are tiled into **768x768** tiles
     """
 
-    def __init__(self, model: str = "gemini-2.5-flash"):
+    def __init__(self, model: str = "gemini-2.5-flash", prompt: str = ""):
         super().__init__(model)
-        self.pdf_prompt = (
-            "Extract the main content from the PDF document. Ensure to exclude any "
-            "metadata, headers, footers, or any other non-essential information. "
-            "Return the extracted content as it appears in the document, without "
-            "any additional modification, summarization or interpretation."
-        )
-        self.jpeg_prompt = (
-            "Extract the visible text from the image, generate a concise caption "
-            "describing the image's content or scene, return the text with caption."
-        )
+        self.user_prompt = prompt
 
     def name(self) -> str:
         return f"gemini_extractor_{self.model}"
@@ -116,7 +119,7 @@ class GeminiExtractor(SimpleExtractor, GeminiGenerateProvider):
         """Extract text & caption from image."""
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_with_data(
-                self.jpeg_prompt, GeminiMimeType.JPEG, img
+                self.user_prompt or EXTRACT_IMAGE_PROMPT, GeminiMimeType.JPEG, img
             )
         )
         return resp.get_text().strip()
@@ -125,7 +128,7 @@ class GeminiExtractor(SimpleExtractor, GeminiGenerateProvider):
         """Extract text from PDF page by page."""
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_with_data(
-                self.pdf_prompt, GeminiMimeType.PDF, doc
+                self.user_prompt or EXTRACT_PDF_PROMPT, GeminiMimeType.PDF, doc
             )
         )
         return resp.get_text().strip()
