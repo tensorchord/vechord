@@ -49,10 +49,10 @@ class RunAck(msgspec.Struct, kw_only=True, frozen=True):
     uid: UUID
 
 
-class SearchResponse(msgspec.Struct, kw_only=True):
+class SearchResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
     uid: UUID
     doc_id: UUID
-    text: str
+    text: Optional[str] = None
 
 
 class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
@@ -85,7 +85,7 @@ class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
     def cleanup(self):
         if self.chunk_type and self.chunk_type != "text":
             for chunk in self.chunks:
-                chunk.text = ""
+                chunk.text = None
 
     def reorder(self, indices: list[int]):
         self.chunks = [self.chunks[i] for i in indices]
