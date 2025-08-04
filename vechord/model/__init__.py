@@ -4,7 +4,6 @@ from vechord.model.gemini import (
     GeminiGenerateRequest,
     GeminiGenerateResponse,
     GeminiMimeType,
-    UMBRELAScore,
 )
 from vechord.model.internal import (
     Document,
@@ -12,6 +11,7 @@ from vechord.model.internal import (
     GraphRelation,
     RetrievedChunk,
     SparseEmbedding,
+    UMBRELAScore,
 )
 from vechord.model.jina import JinaEmbeddingRequest, JinaEmbeddingResponse
 from vechord.model.llamacloud import (

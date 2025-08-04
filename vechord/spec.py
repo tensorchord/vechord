@@ -659,6 +659,15 @@ class DefaultDocument(Table, kw_only=True):
     )
 
 
+class RunChunk(Table, kw_only=True):
+    uid: PrimaryKeyUUID = msgspec.field(default_factory=PrimaryKeyUUID.factory)
+    doc_id: Annotated[UUID, ForeignKey[DefaultDocument.uid]]
+    text: str
+    text_type: str = "text"  # ref to :py:class:`InputType`
+    vec: Vector[1]  # as a placeholder, will be replaced by the actual vector type
+    keyword: Keyword
+
+
 class _DefaultChunk(Table, kw_only=True):
     """A placeholder for the chunk table class.
 

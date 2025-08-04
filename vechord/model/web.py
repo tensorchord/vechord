@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 import msgspec
@@ -49,10 +49,10 @@ class RunAck(msgspec.Struct, kw_only=True, frozen=True):
     uid: UUID
 
 
-class SearchResponse(msgspec.Struct, kw_only=True):
+class SearchResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
     uid: UUID
     doc_id: UUID
-    text: str
+    text: Optional[str] = None
 
 
 class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
@@ -65,9 +65,14 @@ class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
     """
 
     chunks: list[SearchResponse] = msgspec.field(default_factory=list)
+    chunk_type: Optional[str] = None
     metrics: dict[str, float] = msgspec.field(default_factory=dict)
 
     def extend(self, chunks: list):
+        if chunks and self.chunk_type is None:
+            self.chunk_type = (
+                chunks[0].text_type if hasattr(chunks[0], "text_type") else "text"
+            )
         for chunk in chunks:
             self.chunks.append(
                 SearchResponse(
@@ -76,6 +81,11 @@ class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
                     text=chunk.text,
                 )
             )
+
+    def cleanup(self):
+        if self.chunk_type and self.chunk_type != "text":
+            for chunk in self.chunks:
+                chunk.text = None
 
     def reorder(self, indices: list[int]):
         self.chunks = [self.chunks[i] for i in indices]

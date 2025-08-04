@@ -1,3 +1,4 @@
+import base64
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Sequence
@@ -6,7 +7,12 @@ import msgspec
 import pytrec_eval
 
 from vechord.errors import DecodeStructuredOutputError, RequestError
-from vechord.model import GeminiGenerateRequest, RetrievedChunk, UMBRELAScore
+from vechord.model import (
+    GeminiGenerateRequest,
+    GeminiMimeType,
+    RetrievedChunk,
+    UMBRELAScore,
+)
 from vechord.provider import GeminiGenerateProvider
 
 
@@ -139,6 +145,11 @@ UMBRELA_PROMPT_FIELD = """
 Query: {query}
 Passage: {passage}
 """
+UMBRELA_IMAGE_PASSAGE = """
+Extract the visible text from the image and generate a concise caption
+describing the image's content or scene, combine the text with caption
+as the passage text for evaluation.
+"""
 
 
 class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
@@ -163,15 +174,25 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
     def name(self) -> str:
         return f"gemini_umbrela_{self.model}"
 
-    async def estimate(self, query: str, passage: str) -> int:
+    async def estimate(self, query: str, passage: str, chunk_type: str = "text") -> int:
         if not passage:
             return 0
-        content = self.prompt.format(query=query, passage=passage)
-        resp = await self.query(
+
+        req = (
             GeminiGenerateRequest.from_prompt_structure_response(
-                content, self.score_schema
+                self.prompt.format(query=query, passage=passage), self.score_schema
+            )
+            if chunk_type == "text"
+            else GeminiGenerateRequest.from_prompt_data_structure_resp(
+                self.prompt.format(query=query, passage=UMBRELA_IMAGE_PASSAGE),
+                mime_type=GeminiMimeType.PDF
+                if chunk_type == "pdf"
+                else GeminiMimeType.JPEG,
+                data=base64.b64decode(passage),
+                schema=self.score_schema,
             )
         )
+        resp = await self.query(req)
         try:
             score = msgspec.json.decode(resp.get_text(), type=UMBRELAScore).score
         except (msgspec.DecodeError, KeyError) as err:
@@ -181,7 +202,7 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
         return score
 
     async def evaluate_with_estimation(
-        self, query: str, passages: list[str]
+        self, query: str, passages: list[str], chunk_type: str = "text"
     ) -> dict[str, float]:
         """Calculate the Precision@K and Mean Reciprocal Rank (MRR)."""
         if not query or not passages or all(not p.strip() for p in passages):
@@ -189,7 +210,7 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
                 "Query must be non-empty and passages must contain at least "
                 "one non-empty string."
             )
-        scores = [await self.estimate(query, p) for p in passages]
+        scores = [await self.estimate(query, p, chunk_type) for p in passages]
         is_relevant = [score >= self.relevant_threshold for score in scores]
         metric = defaultdict(float)
 

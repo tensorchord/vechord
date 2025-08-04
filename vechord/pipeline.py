@@ -1,3 +1,4 @@
+import base64
 import itertools
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
@@ -23,10 +24,10 @@ from vechord.embedding import (
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
 )
-from vechord.entity import GeminiEntityRecognizer
 from vechord.errors import RequestError
 from vechord.evaluate import GeminiUMBRELAEvaluator
 from vechord.extract import GeminiExtractor, LlamaParseExtractor
+from vechord.graph import GeminiEntityRecognizer
 from vechord.model import (
     GraphEntity,
     GraphRelation,
@@ -43,10 +44,10 @@ from vechord.spec import (
     Keyword,
     KeywordIndex,
     PrimaryKeyUUID,
+    RunChunk,
     Table,
     Vector,
     VectorIndex,
-    _DefaultChunk,
 )
 from vechord.typing import Self
 
@@ -183,8 +184,8 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             raise RequestError("Vector index is required if `index` is specified")
         if self.search and not (self.text_emb or self.multimodal_emb):
             raise RequestError("Search requires at least one embedding provider")
-        if self.search and self.multimodal_emb and self.evaluate:
-            raise RequestError("`evaluate` is not supported for `multimodal-emb`.")
+        if self.search and self.rerank and self.multimodal_emb:
+            raise RequestError("Rerank only supports text")
 
     @classmethod
     def from_steps(cls, steps: list[ResourceRequest]) -> Self:
@@ -258,7 +259,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         vec_index_type = Annotated[Vector[dim], self.index.vector]
 
         Chunk = msgspec.defstruct(
-            "Chunk", (("vec", vec_index_type),), bases=(_DefaultChunk,)
+            "Chunk", (("vec", vec_index_type),), bases=(RunChunk,)
         )
         # use the default vector index for Entity and Relation
         Entity = msgspec.defstruct("Entity", (("vec", Vector[dim]),), bases=(_Entity,))
@@ -277,12 +278,19 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         # Create a fake chunk to ref the document by doc_id.
         # This is useful because graph entities and relations will ref the chunk uuids
         # and image/pdf doesn't have real chunks.
-        fake_chunk = Chunk(doc_id=doc.uid, text="", Keyword=None, vec=None)
+        fake_chunk = Chunk(
+            doc_id=doc.uid,
+            text="",
+            text_type=request.input_type.value,
+            Keyword=None,
+            vec=None,
+        )
         if self.multimodal_emb:
             chunks.append(
                 Chunk(
                     doc_id=doc.uid,
-                    text="",
+                    text=base64.b64encode(request.data).decode("utf-8"),
+                    text_type=request.input_type.value,
                     keyword=None,
                     vec=await self.multimodal_emb.vectorize_multimodal_chunk(
                         request.data
@@ -298,6 +306,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 elif request.input_type is InputType.IMAGE:
                     doc.text = await self.ocr.extract_image(request.data)
             elif self.graph:
+                fake_chunk.text = base64.b64encode(request.data).decode("utf-8")
                 img_ents, img_rels = await self.graph.recognize_image(request.data)
                 conv_ents, conv_rels = self._convert_from_extracted_graph(
                     fake_chunk.uid, img_ents, img_rels, Entity, Relation
@@ -403,7 +412,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         query = request.data.decode("utf-8")
 
         # for type hint and compatibility
-        class Chunk(_DefaultChunk):
+        class Chunk(RunChunk):
             pass
 
         class Entity(_Entity):
@@ -433,12 +442,11 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         if self.rerank:
             indices = await self.rerank.rerank(query, [chunk.text for chunk in resp])
             resp.reorder(indices)
-
         if self.evaluate:
             resp.metrics = await self.evaluate.evaluate_with_estimation(
-                query, [chunk.text for chunk in resp.chunks]
+                query, [chunk.text for chunk in resp.chunks], chunk_type=resp.chunk_type
             )
-
+        resp.cleanup()
         return resp
 
     async def graph_search(

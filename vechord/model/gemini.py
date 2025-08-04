@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional
+from typing import Any, Literal, Optional
 
 import msgspec
 import numpy as np
@@ -26,18 +26,6 @@ class GeminiMimeType(str, Enum):
     WEBP = "image/webp"
     HEIC = "image/heic"
     HEIF = "image/heif"
-
-
-class UMBRELAScore(msgspec.Struct, kw_only=True):
-    """Score for UMBRELA evaluation.
-
-    - 0: Not relevant
-    - 1: Relevant but does not answer the query
-    - 2: Answer the query but may be a bit unclear
-    - 3: Dedicated to the query and contains the exact answer
-    """
-
-    score: Annotated[int, msgspec.Meta(ge=0, le=3)]
 
 
 class InlineData(msgspec.Struct, kw_only=True):
