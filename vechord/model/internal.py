@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Annotated
 
 import msgspec
 
@@ -49,3 +50,15 @@ class RetrievedChunk(msgspec.Struct, kw_only=True):
     uid: str
     text: str
     score: float
+
+
+class UMBRELAScore(msgspec.Struct, kw_only=True):
+    """Score for UMBRELA evaluation.
+
+    - 0: Not relevant
+    - 1: Relevant but does not answer the query
+    - 2: Answer the query but may be a bit unclear
+    - 3: Dedicated to the query and contains the exact answer
+    """
+
+    score: Annotated[int, msgspec.Meta(ge=0, le=3)]

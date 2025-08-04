@@ -9,8 +9,8 @@ import msgspec
 import rich.progress
 
 from vechord.embedding import GeminiDenseEmbedding
-from vechord.entity import GeminiEntityRecognizer
 from vechord.evaluate import BaseEvaluator
+from vechord.graph import GeminiEntityRecognizer
 from vechord.registry import VechordRegistry
 from vechord.spec import AnyOf, PrimaryKeyUUID, Table, Vector
 
