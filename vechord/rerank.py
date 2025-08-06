@@ -4,6 +4,8 @@ from contextlib import AsyncExitStack
 from os import environ
 from typing import TypeVar
 
+from vechord.model import JinaRerankRequest
+from vechord.provider import JinaRerankProvider
 from vechord.spec import Table
 
 T = TypeVar("T", bound=Table)
@@ -15,9 +17,19 @@ class BaseReranker(ABC):
         """Return the indices of the reranked chunks."""
         raise NotImplementedError
 
+    @abstractmethod
+    async def rerank_multimodal(
+        self, query: str, chunks: list[str], doc_type: str
+    ) -> list[int]:
+        """Return the indices of the reranked multimodal chunks."""
+        raise NotImplementedError
+
 
 class CohereReranker(BaseReranker):
-    """Rerank chunks using Cohere API (requires env `COHERE_API_KEY`)."""
+    """Rerank chunks using Cohere API (requires env `COHERE_API_KEY`).
+
+    Only supports rerank documents.
+    """
 
     def __init__(self, model: str = "rerank-v3.5"):
         self.api_key = environ.get("COHERE_API_KEY")
@@ -44,6 +56,38 @@ class CohereReranker(BaseReranker):
             documents=chunks,
         )
         return [item.index for item in resp.results]
+
+    async def rerank_multimodal(
+        self, query: str, chunks: list[str], doc_type: str
+    ) -> list[int]:
+        raise NotImplementedError("Cohere does not support multimodal reranking.")
+
+
+class JinaReranker(BaseReranker, JinaRerankProvider):
+    """Rerank chunks using Jina Rerank API (requires env `JINA_API_KEY`)."""
+
+    def __init__(self, model: str = "jina-reranker-m0"):
+        super().__init__(model)
+
+    async def rerank(self, query: str, chunks: list[str]) -> list[int]:
+        resp = await self.query(
+            JinaRerankRequest.from_query_docs(query=query, docs=chunks)
+        )
+        return resp.get_indices()
+
+    async def rerank_multimodal(
+        self, query: str, chunks: list[str], doc_type: str
+    ) -> list[int]:
+        """
+        Args:
+            doc_type: "text" or "image"
+        """
+        resp = await self.query(
+            JinaRerankRequest.from_query_multimodal(
+                query=query, documents=chunks, doc_type=doc_type
+            )
+        )
+        return resp.get_indices()
 
 
 class ReciprocalRankFusion:

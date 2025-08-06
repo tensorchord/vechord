@@ -84,3 +84,61 @@ class JinaEmbeddingResponse(msgspec.Struct, kw_only=True):
         if isinstance(emb, list):
             return np.array(emb, dtype=np.float32)
         return np.frombuffer(emb, dtype=np.float32)
+
+
+class JinaRerankRequest(msgspec.Struct, kw_only=True):
+    model: Literal["jina-reranker-v2-base-multilingual", "jina-reranker-m0"]
+    query: str
+    top_n: int
+    documents: list[str | JinaInput]
+    return_documents: bool = False
+
+    @classmethod
+    def from_query_docs(
+        cls,
+        query: str,
+        documents: list[str],
+        model: Literal["jina-reranker-m0", "jina-reranker-v2-base-multilingual"],
+    ) -> Self:
+        if not query or not documents:
+            raise RequestError("Query and documents must be provided")
+
+        return JinaRerankRequest(
+            model=model,
+            query=query,
+            top_n=len(documents),
+            documents=[JinaInput(text=doc) for doc in documents]
+            if model == "jina-reranker-m0"
+            else documents,
+        )
+
+    @classmethod
+    def from_query_multimodal(
+        cls,
+        query: str,
+        documents: list[str],
+        doc_type: Literal["text", "image"],
+        model: Literal["jina-reranker-m0"] = "jina-reranker-m0",
+    ) -> Self:
+        docs = [
+            JinaInput(text=doc) if doc_type == "text" else JinaInput(image=doc)
+            for doc in documents
+        ]
+        return JinaRerankRequest(
+            model=model,
+            query=query,
+            top_n=len(docs),
+            documents=docs,
+        )
+
+
+class RerankObject(msgspec.Struct, kw_only=True):
+    index: int
+    relevance_score: float
+
+
+class JinaRerankResponse(msgspec.Struct, kw_only=True):
+    results: list[RerankObject]
+
+    def get_indices(self) -> list[int]:
+        return [result.index for result in self.results]

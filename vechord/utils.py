@@ -12,6 +12,7 @@ GEMINI_EMBEDDING_RPS = 0.6
 VOYAGE_EMBEDDING_RPS = 33.33
 # https://jina.ai/api-dashboard/rate-limit
 JINA_EMBEDDING_RPS = 8.33
+JINA_RERANK_RPS = 8.33
 
 
 class RateLimitTransport(httpx.AsyncHTTPTransport):

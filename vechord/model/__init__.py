@@ -13,7 +13,12 @@ from vechord.model.internal import (
     SparseEmbedding,
     UMBRELAScore,
 )
-from vechord.model.jina import JinaEmbeddingRequest, JinaEmbeddingResponse
+from vechord.model.jina import (
+    JinaEmbeddingRequest,
+    JinaEmbeddingResponse,
+    JinaRerankRequest,
+    JinaRerankResponse,
+)
 from vechord.model.llamacloud import (
     LlamaCloudMimeType,
     LlamaCloudParseRequest,
@@ -44,6 +49,8 @@ __all__ = [
     "InputType",
     "JinaEmbeddingRequest",
     "JinaEmbeddingResponse",
+    "JinaRerankRequest",
+    "JinaRerankResponse",
     "LlamaCloudMimeType",
     "LlamaCloudParseRequest",
     "LlamaCloudParseResponse",
