@@ -94,7 +94,12 @@ class JinaRerankRequest(msgspec.Struct, kw_only=True):
     return_documents: bool = False
 
     @classmethod
-    def from_query_docs(cls, query: str, documents: list[str], model: str) -> Self:
+    def from_query_docs(
+        cls,
+        query: str,
+        documents: list[str],
+        model: Literal["jina-reranker-m0", "jina-reranker-v2-base-multilingual"],
+    ) -> Self:
         if not query or not documents:
             raise RequestError("Query and documents must be provided")
 

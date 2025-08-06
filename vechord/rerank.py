@@ -57,7 +57,9 @@ class CohereReranker(BaseReranker):
         )
         return [item.index for item in resp.results]
 
-    async def rerank_multimodal(self, query, chunks, doc_type):
+    async def rerank_multimodal(
+        self, query: str, chunks: list[str], doc_type: str
+    ) -> list[int]:
         raise NotImplementedError("Cohere does not support multimodal reranking.")
 
 
