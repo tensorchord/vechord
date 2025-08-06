@@ -37,7 +37,7 @@ from vechord.model import (
     RunRequest,
     RunResponse,
 )
-from vechord.rerank import CohereReranker
+from vechord.rerank import CohereReranker, JinaReranker
 from vechord.spec import (
     AnyOf,
     DefaultDocument,
@@ -128,7 +128,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
         "jina": JinaMultiModalEmbedding,
     },
     "ocr": {"gemini": GeminiExtractor, "llamaparse": LlamaParseExtractor},
-    "rerank": {"cohere": CohereReranker},
+    "rerank": {"cohere": CohereReranker, "jina": JinaReranker},
     "graph": {"gemini": GeminiEntityRecognizer},
     "index": {"vectorchord": IndexOption},
     "search": {"vectorchord": SearchOption},
@@ -184,8 +184,6 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             raise RequestError("Vector index is required if `index` is specified")
         if self.search and not (self.text_emb or self.multimodal_emb):
             raise RequestError("Search requires at least one embedding provider")
-        if self.search and self.rerank and self.multimodal_emb:
-            raise RequestError("Rerank only supports text")
 
     @classmethod
     def from_steps(cls, steps: list[ResourceRequest]) -> Self:
@@ -340,21 +338,17 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                     rels.extend(conv_rels)
                 chunks.append(chunk)
 
-        async with (
-            vr.client.get_connection() as conn,
-            limit_to_transaction_buffer_conn(conn),
-        ):
-            await vr.insert(doc)
-            for chunk in chunks:
-                await vr.insert(chunk)
-            if self.index.graph:
-                if request.input_type is not InputType.TEXT:
-                    # insert the fake chunk for image/pdf
-                    await vr.insert(fake_chunk)
-                await self.graph_insert(
-                    ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
-                )
-            return RunAck(name=request.name, msg="succeed", uid=doc.uid)
+        await vr.insert(doc)
+        for chunk in chunks:
+            await vr.insert(chunk)
+        if self.index.graph:
+            if request.input_type is not InputType.TEXT:
+                # insert the fake chunk for image/pdf
+                await vr.insert(fake_chunk)
+            await self.graph_insert(
+                ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
+            )
+        return RunAck(name=request.name, msg="succeed", uid=doc.uid)
 
     async def graph_insert(
         self,
@@ -440,7 +434,16 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         if self.search.graph:
             resp.extend(await self.graph_search(query, Chunk, Entity, Relation, vr))
         if self.rerank:
-            indices = await self.rerank.rerank(query, [chunk.text for chunk in resp])
+            if self.multimodal_emb:
+                indices = await self.rerank.rerank_multimodal(
+                    query=query,
+                    chunks=[chunk.text for chunk in resp],
+                    doc_type=resp.chunk_type,
+                )
+            else:
+                indices = await self.rerank.rerank(
+                    query=query, chunks=[chunk.text for chunk in resp]
+                )
             resp.reorder(indices)
         if self.evaluate:
             resp.metrics = await self.evaluate.evaluate_with_estimation(
