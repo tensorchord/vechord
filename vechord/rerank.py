@@ -71,7 +71,9 @@ class JinaReranker(BaseReranker, JinaRerankProvider):
 
     async def rerank(self, query: str, chunks: list[str]) -> list[int]:
         resp = await self.query(
-            JinaRerankRequest.from_query_docs(query=query, documents=chunks, model=self.model)
+            JinaRerankRequest.from_query_docs(
+                query=query, documents=chunks, model=self.model
+            )
         )
         return resp.get_indices()
 

@@ -248,9 +248,9 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         ]
         return converted_ents, converted_rels
 
-    async def run_index(
+    async def run_index(  # noqa: PLR0912
         self, request: RunRequest, vr: "VechordRegistry"
-    ) -> RunIngestAck:  # noqa: PLR0912
+    ) -> RunIngestAck:
         dim = (
             self.text_emb.get_dim() if self.text_emb else self.multimodal_emb.get_dim()
         )
