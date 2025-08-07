@@ -3,6 +3,7 @@ from contextlib import AsyncExitStack
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
 from typing import (
+    Any,
     Callable,
     Optional,
     Sequence,
@@ -13,9 +14,12 @@ from typing import (
 
 import numpy as np
 
-from vechord.client import VechordClient, select_transaction_buffer_conn
+from vechord.client import (
+    VechordClient,
+    limit_to_transaction_buffer_conn,
+    select_transaction_buffer_conn,
+)
 from vechord.log import logger
-from vechord.pipeline import VechordPipeline
 from vechord.spec import Table, Vector
 
 T = TypeVar("T", bound=Table)
@@ -32,6 +36,43 @@ def get_iterator_type(typ) -> type:
     if not is_list_of_type(typ):
         return typ
     return get_iterator_type(typ.__args__[0])
+
+
+class VechordPipeline:
+    """Set up the pipeline to run multiple functions in a transaction.
+
+    Args:
+        client: :class:`VechordClient` to be used for the transaction.
+        steps: a list of functions to be run in the pipeline. The first function
+            will be used to accept the input, and the last function will be used
+            to return the output. The rest of the functions will be used to
+            process the data in between. The functions will be run in the order
+            they are defined in the list.
+    """
+
+    def __init__(self, client: VechordClient, steps: list[Callable]):
+        self.client = client
+        self.steps = steps
+
+    async def run(self, *args, **kwargs) -> Any:
+        """Execute the pipeline in a transactional manner.
+
+        All the `args` and `kwargs` will be passed to the first function in the
+        pipeline. The pipeline will run in *one* transaction, and all the `inject`
+        can only see the data inserted in this transaction (to guarantee only the
+        new inserted data will be processed in this pipeline).
+
+        This will also return the final result of the last function in the pipeline.
+        """
+        async with (
+            self.client.get_connection() as conn,
+            limit_to_transaction_buffer_conn(conn),
+        ):
+            # only the 1st one can accept input (could be empty)
+            await self.steps[0](*args, **kwargs)
+            for func in self.steps[1:-1]:
+                await func()
+            return await self.steps[-1]()
 
 
 class VechordRegistry:
