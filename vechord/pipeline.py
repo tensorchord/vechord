@@ -33,9 +33,9 @@ from vechord.model import (
     GraphRelation,
     InputType,
     ResourceRequest,
-    RunAck,
+    RunIngestAck,
     RunRequest,
-    RunResponse,
+    RunSearchResponse,
 )
 from vechord.rerank import BaseReranker, CohereReranker, JinaReranker
 from vechord.spec import (
@@ -209,7 +209,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
 
     async def run(
         self, request: RunRequest, vr: "VechordRegistry"
-    ) -> RunAck | RunResponse:
+    ) -> RunIngestAck | RunSearchResponse:
         """Run the dynamic pipeline with the given request."""
         async with set_namespace(request.name):
             resp = (
@@ -248,7 +248,9 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         ]
         return converted_ents, converted_rels
 
-    async def run_index(self, request: RunRequest, vr: "VechordRegistry") -> RunAck:  # noqa: PLR0912
+    async def run_index(
+        self, request: RunRequest, vr: "VechordRegistry"
+    ) -> RunIngestAck:  # noqa: PLR0912
         dim = (
             self.text_emb.get_dim() if self.text_emb else self.multimodal_emb.get_dim()
         )
@@ -335,7 +337,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             await self.graph_insert(
                 ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
             )
-        return RunAck(name=request.name, msg="succeed", uid=doc.uid)
+        return RunIngestAck(name=request.name, msg="succeed", uid=doc.uid)
 
     async def graph_insert(
         self,
@@ -392,7 +394,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
 
     async def run_search(
         self, request: RunRequest, vr: "VechordRegistry"
-    ) -> RunResponse:
+    ) -> RunSearchResponse:
         query = request.data.decode("utf-8")
 
         # for type hint and compatibility
@@ -405,7 +407,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         class Relation(_Relation):
             pass
 
-        resp = RunResponse()
+        resp = RunSearchResponse()
         if self.search.vector:
             vec = (
                 await self.text_emb.vectorize_query(query)
@@ -423,6 +425,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             )
         if self.search.graph:
             resp.extend(await self.graph_search(query, Chunk, Entity, Relation, vr))
+        resp.deduplicate()
         if self.rerank:
             if self.multimodal_emb:
                 indices = await self.rerank.rerank_multimodal(
@@ -432,7 +435,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 )
             else:
                 indices = await self.rerank.rerank(
-                    query=query, chunks=[chunk.text for chunk in resp]
+                    query=query, chunks=[chunk.text for chunk in resp.chunks]
                 )
             resp.reorder(indices)
         if self.evaluate:

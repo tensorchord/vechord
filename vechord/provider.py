@@ -1,6 +1,7 @@
 import asyncio
 from os import environ
 from typing import Literal
+from uuid import UUID
 
 import httpx
 import msgspec
@@ -236,7 +237,7 @@ class LlamaCloudProvider(BaseProvider):
             )
         return self.decoder.decode(response.content)
 
-    async def get_text(self, job_id: str) -> str:
+    async def get_text(self, job_id: UUID) -> str:
         """Get the text result from a LlamaCloud job."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + EXTRACT_MAX_POLLING_TIME

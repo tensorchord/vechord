@@ -96,13 +96,19 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
 
     def recognize(self, text) -> list[GraphEntity]:
         doc = self.nlp(text)
-        return [GraphEntity(text=ent.text, label=ent.label_) for ent in doc.ents]
+        return [
+            GraphEntity(text=ent.text, label=ent.label_, description="")
+            for ent in doc.ents
+        ]
 
     def recognize_with_relations(
         self, text
     ) -> tuple[list[GraphEntity], list[GraphRelation]]:
         doc = self.nlp(text)
-        ents = [GraphEntity(text=ent.text, label=ent.label_) for ent in doc.ents]
+        ents = [
+            GraphEntity(text=ent.text, label=ent.label_, description="")
+            for ent in doc.ents
+        ]
         relations: list[GraphRelation] = []
         matches = self.matcher(doc)
         for _, start, end in matches:
@@ -110,7 +116,9 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
             ent0 = ent1 = None
             for token in span:
                 if token.ent_type_:
-                    ent = GraphEntity(text=token.text, label=token.ent_type_)
+                    ent = GraphEntity(
+                        text=token.text, label=token.ent_type_, description=""
+                    )
                     if ent0 is None:
                         ent0 = ent
                     else:
@@ -119,9 +127,13 @@ class SpacyEntityRecognizer(BaseEntityRecognizer):
             relations.append(
                 GraphRelation(
                     source=ent0
-                    or GraphEntity(text=span[0].text, label=span[0].ent_type_),
+                    or GraphEntity(
+                        text=span[0].text, label=span[0].ent_type_, description=""
+                    ),
                     target=ent1
-                    or GraphEntity(text=span[-1].text, label=span[-1].ent_type_),
+                    or GraphEntity(
+                        text=span[-1].text, label=span[-1].ent_type_, description=""
+                    ),
                     description=" ".join(token.text for token in span),
                 )
             )

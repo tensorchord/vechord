@@ -158,7 +158,7 @@ class GeminiChunker(BaseChunker, GeminiGenerateProvider):
             return chunks
 
         all_chunks = []
-        for chunk in self.regex_chunker.segment(text):
+        for chunk in await self.regex_chunker.segment(text):
             chunks = await self.structure_query(
                 self.prompt.format(size=self.size, document=chunk)
             )

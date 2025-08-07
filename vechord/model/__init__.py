@@ -32,9 +32,9 @@ from vechord.model.voyage import (
 from vechord.model.web import (
     InputType,
     ResourceRequest,
-    RunAck,
+    RunIngestAck,
     RunRequest,
-    RunResponse,
+    RunSearchResponse,
 )
 
 __all__ = [
@@ -56,9 +56,9 @@ __all__ = [
     "LlamaCloudParseResponse",
     "ResourceRequest",
     "RetrievedChunk",
-    "RunAck",
+    "RunIngestAck",
     "RunRequest",
-    "RunResponse",
+    "RunSearchResponse",
     "SparseEmbedding",
     "UMBRELAScore",
     "VoyageEmbeddingRequest",
