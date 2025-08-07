@@ -1,17 +1,15 @@
 import base64
 import itertools
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from contextlib import contextmanager
 from os import environ
-from typing import TYPE_CHECKING, Annotated, Any, Optional
+from typing import Annotated, Any, Optional
 from uuid import UUID
 
 import msgspec
 
 from vechord.chunk import BaseChunker, GeminiChunker, RegexChunker
 from vechord.client import (
-    VechordClient,
-    limit_to_transaction_buffer_conn,
     set_namespace,
 )
 from vechord.embedding import (
@@ -37,6 +35,7 @@ from vechord.model import (
     RunRequest,
     RunSearchResponse,
 )
+from vechord.registry import VechordRegistry
 from vechord.rerank import BaseReranker, CohereReranker, JinaReranker
 from vechord.spec import (
     AnyOf,
@@ -50,9 +49,6 @@ from vechord.spec import (
     VectorIndex,
 )
 from vechord.typing import Self
-
-if TYPE_CHECKING:
-    from vechord.registry import VechordRegistry
 
 
 class GraphIndex(msgspec.Struct):
@@ -208,7 +204,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         return msgspec.convert(calls, DynamicPipeline)
 
     async def run(
-        self, request: RunRequest, vr: "VechordRegistry"
+        self, request: RunRequest, vr: VechordRegistry
     ) -> RunIngestAck | RunSearchResponse:
         """Run the dynamic pipeline with the given request."""
         async with set_namespace(request.name):
@@ -249,7 +245,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         return converted_ents, converted_rels
 
     async def run_index(  # noqa: PLR0912
-        self, request: RunRequest, vr: "VechordRegistry"
+        self, request: RunRequest, vr: VechordRegistry
     ) -> RunIngestAck:
         dim = (
             self.text_emb.get_dim() if self.text_emb else self.multimodal_emb.get_dim()
@@ -345,7 +341,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         rels: list[_Relation],
         ent_cls: type[Table],
         rel_cls: type[Table],
-        vr: "VechordRegistry",
+        vr: VechordRegistry,
     ):
         """Insert entities and relations into the graph index."""
         ent_map: dict[str, _Entity] = {}
@@ -393,7 +389,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             await vr.insert(rel)
 
     async def run_search(
-        self, request: RunRequest, vr: "VechordRegistry"
+        self, request: RunRequest, vr: VechordRegistry
     ) -> RunSearchResponse:
         query = request.data.decode("utf-8")
 
@@ -451,7 +447,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         chunk_cls: type[Table],
         ent_cls: type[Table],
         rel_cls: type[Table],
-        vr: "VechordRegistry",
+        vr: VechordRegistry,
     ):
         ents, rels = await self.graph.recognize_with_relations(query)
         emb_func = (
@@ -499,40 +495,3 @@ def deduplicate_uid(uuids: Iterable[UUID], limit: Optional[int] = None) -> list[
     """Maintain the order of the occurrence of UUIDs and deduplicate them."""
     uuids = {uid: None for uid in uuids}
     return list(uuids.keys())[:limit]
-
-
-class VechordPipeline:
-    """Set up the pipeline to run multiple functions in a transaction.
-
-    Args:
-        client: :class:`VectorChordClient` to be used for the transaction.
-        steps: a list of functions to be run in the pipeline. The first function
-            will be used to accept the input, and the last function will be used
-            to return the output. The rest of the functions will be used to
-            process the data in between. The functions will be run in the order
-            they are defined in the list.
-    """
-
-    def __init__(self, client: VechordClient, steps: list[Callable]):
-        self.client = client
-        self.steps = steps
-
-    async def run(self, *args, **kwargs) -> Any:
-        """Execute the pipeline in a transactional manner.
-
-        All the `args` and `kwargs` will be passed to the first function in the
-        pipeline. The pipeline will run in *one* transaction, and all the `inject`
-        can only see the data inserted in this transaction (to guarantee only the
-        new inserted data will be processed in this pipeline).
-
-        This will also return the final result of the last function in the pipeline.
-        """
-        async with (
-            self.client.get_connection() as conn,
-            limit_to_transaction_buffer_conn(conn),
-        ):
-            # only the 1st one can accept input (could be empty)
-            await self.steps[0](*args, **kwargs)
-            for func in self.steps[1:-1]:
-                await func()
-            return await self.steps[-1]()
