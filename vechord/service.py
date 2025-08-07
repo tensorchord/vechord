@@ -8,10 +8,9 @@ from falcon.asgi import App, Request, Response
 
 from vechord.errors import extract_safe_err_msg
 from vechord.log import logger
-from vechord.model import RunAck, RunRequest
+from vechord.model import RunIngestAck, RunRequest, RunSearchResponse
 from vechord.pipeline import DynamicPipeline
 from vechord.registry import Table, VechordPipeline, VechordRegistry
-from vechord.spec import _DefaultChunk
 
 T = TypeVar("T")
 M = TypeVar("M", bound=msgspec.Struct)
@@ -150,7 +149,7 @@ class OpenAPIResource:
             "post",
             summary="run the pipeline",
             request_type=RunRequest,
-            response_type=RunAck | list[_DefaultChunk],
+            response_type=RunIngestAck | RunSearchResponse,
             schema_hook=vechord_schema_hook,
         )
         if include_pipeline:

@@ -41,7 +41,7 @@ class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
     steps: list[ResourceRequest] = msgspec.field(default_factory=list)
 
 
-class RunAck(msgspec.Struct, kw_only=True, frozen=True):
+class RunIngestAck(msgspec.Struct, kw_only=True, frozen=True, tag="ingest"):
     """Acknowledgment of an index request."""
 
     name: str
@@ -55,7 +55,7 @@ class SearchResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
     text: Optional[str] = None
 
 
-class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
+class RunSearchResponse(msgspec.Struct, kw_only=True, omit_defaults=True, tag="search"):
     """Response to a search request.
 
     metrics:
@@ -86,6 +86,14 @@ class RunResponse(msgspec.Struct, kw_only=True, omit_defaults=True):
         if self.chunk_type and self.chunk_type != "text":
             for chunk in self.chunks:
                 chunk.text = None
+
+    def deduplicate(self):
+        """Deduplicate chunks while maintain the order."""
+        unique_chunks = {}
+        for chunk in self.chunks:
+            if chunk.uid not in unique_chunks:
+                unique_chunks[chunk.uid] = chunk
+        self.chunks = list(unique_chunks.values())
 
     def reorder(self, indices: list[int]):
         self.chunks = [self.chunks[i] for i in indices]

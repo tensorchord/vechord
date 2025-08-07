@@ -90,7 +90,7 @@ class JinaRerankRequest(msgspec.Struct, kw_only=True):
     model: Literal["jina-reranker-v2-base-multilingual", "jina-reranker-m0"]
     query: str
     top_n: int
-    documents: list[str | JinaInput]
+    documents: list[str] | list[JinaInput]
     return_documents: bool = False
 
     @classmethod
