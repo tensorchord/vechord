@@ -54,12 +54,18 @@ class BaseTextEmbedding(BaseEmbedding):
 class BaseMultiModalEmbedding(BaseEmbedding):
     @abstractmethod
     async def vectorize_multimodal_chunk(
-        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
     ) -> np.ndarray:
         raise NotImplementedError
 
     async def vectorize_multimodal_query(
-        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
     ) -> np.ndarray:
         return await self.vectorize_multimodal_chunk(text, image, image_url)
 
@@ -184,7 +190,10 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         return f"jina_emb_{self.model}_{self.dim}"
 
     async def vectorize_multimodal_chunk(
-        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
     ) -> np.ndarray:
         req = await self.query(
             JinaEmbeddingRequest.from_text_image(
@@ -198,7 +207,10 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         return req.get_emb()
 
     async def vectorize_multimodal_query(
-        self, text: str, image: Optional[bytes] = None, image_url: Optional[str] = None
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
     ) -> np.ndarray:
         req = await self.query(
             JinaEmbeddingRequest.from_text_image(
@@ -268,8 +280,8 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
 
     async def vectorize_multimodal_chunk(
         self,
-        image: Optional[bytes] = None,
         text: Optional[str] = None,
+        image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ):
         resp = await self.query(
@@ -285,8 +297,8 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
 
     async def vectorize_multimodal_query(
         self,
-        image: Optional[bytes] = None,
         text: Optional[str] = None,
+        image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ):
         resp = await self.query(

@@ -84,8 +84,8 @@ class VoyageMultiModalEmbeddingRequest(msgspec.Struct, kw_only=True):
     def build(
         cls,
         text: Optional[str],
-        image_url: Optional[str],
         image: Optional[bytes],
+        image_url: Optional[str],
         model: str,
         input_type: VOYAGE_INPUT_TYPE,
     ) -> Self:
