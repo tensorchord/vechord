@@ -134,6 +134,10 @@ Extract meaningful named entities and the possible relations between them.
 Entity could be person, location, org, event or category.
 """
 RECOGNIZE_PROMPT_FIELD = """\n<document>\n{text}\n</document>\n"""
+RECOGNIZE_PROMPT_IMAGE = """
+Extract the readable text and generate a concise caption describing the image's content
+or scene. Use the text and caption as the passage text for named entity extraction.
+"""
 
 
 class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
@@ -184,13 +188,9 @@ class GeminiEntityRecognizer(BaseEntityRecognizer, GeminiGenerateProvider):
         self, img: bytes
     ) -> tuple[list[GraphEntity], list[GraphRelation]]:
         """Recognize entities & relations from the image."""
-        prompt = (
-            "Given the image, first summarize it and extract readable text."
-            f"{self.prompt}"
-        )
         resp = await self.query(
             GeminiGenerateRequest.from_prompt_data_structure_resp(
-                prompt=prompt,
+                prompt=self.prompt.format(text=RECOGNIZE_PROMPT_IMAGE),
                 mime_type=GeminiMimeType.JPEG,
                 data=img,
                 schema=msgspec.json.schema(list[GraphRelation]),

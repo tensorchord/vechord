@@ -14,8 +14,8 @@ class GraphEntity(msgspec.Struct, kw_only=True, frozen=True):
     """
 
     text: str
-    label: str = ""
-    description: str = ""
+    label: str
+    description: str
 
 
 class GraphRelation(msgspec.Struct, kw_only=True, frozen=True):
@@ -28,7 +28,7 @@ class GraphRelation(msgspec.Struct, kw_only=True, frozen=True):
 
     source: GraphEntity
     target: GraphEntity
-    description: str = ""
+    description: str
 
 
 class Document(msgspec.Struct, kw_only=True):

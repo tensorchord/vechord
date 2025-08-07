@@ -37,7 +37,7 @@ from vechord.model import (
     RunRequest,
     RunResponse,
 )
-from vechord.rerank import CohereReranker, JinaReranker
+from vechord.rerank import BaseReranker, CohereReranker, JinaReranker
 from vechord.spec import (
     AnyOf,
     DefaultDocument,
@@ -167,7 +167,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
     text_emb: Optional[BaseTextEmbedding] = None
     multimodal_emb: Optional[BaseMultiModalEmbedding] = None
     ocr: Optional[GeminiExtractor] = None
-    rerank: Optional[CohereReranker] = None
+    rerank: Optional[BaseReranker] = None
     index: Optional[IndexOption] = None
     search: Optional[SearchOption] = None
     graph: Optional[GeminiEntityRecognizer] = None
@@ -280,71 +280,58 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             doc_id=doc.uid,
             text="",
             text_type=request.input_type.value,
-            Keyword=None,
+            keyword=None,
             vec=None,
         )
-        if self.multimodal_emb:
-            chunks.append(
-                Chunk(
-                    doc_id=doc.uid,
-                    text=base64.b64encode(request.data).decode("utf-8"),
-                    text_type=request.input_type.value,
-                    keyword=None,
-                    vec=await self.multimodal_emb.vectorize_multimodal_chunk(
-                        request.data
-                    ),
-                )
+        if self.multimodal_emb and request.input_type is not InputType.TEXT:
+            # reuse the fake chunk to ensure the chunk uid is unique
+            fake_chunk.text = base64.b64encode(request.data).decode("utf-8")
+            fake_chunk.vec = await self.multimodal_emb.vectorize_multimodal_chunk(
+                image=request.data
             )
-        else:
-            if request.input_type is InputType.TEXT:
-                doc.text = request.data.decode("utf-8")
-            elif self.ocr:
-                if request.input_type is InputType.PDF:
-                    doc.text = await self.ocr.extract_pdf(request.data)
-                elif request.input_type is InputType.IMAGE:
-                    doc.text = await self.ocr.extract_image(request.data)
-            elif self.graph:
-                fake_chunk.text = base64.b64encode(request.data).decode("utf-8")
-                img_ents, img_rels = await self.graph.recognize_image(request.data)
+            chunks.append(fake_chunk)
+        if request.input_type is InputType.TEXT:
+            doc.text = request.data.decode("utf-8")
+        elif self.ocr:
+            if request.input_type is InputType.PDF:
+                doc.text = await self.ocr.extract_pdf(request.data)
+            elif request.input_type is InputType.IMAGE:
+                doc.text = await self.ocr.extract_image(request.data)
+        if self.chunk:
+            sentences.extend(await self.chunk.segment(doc.text))
+        elif doc.text:
+            sentences.append(doc.text)
+
+        for sent in sentences:
+            chunk = Chunk(
+                vec=await self.text_emb.vectorize_chunk(sent),
+                doc_id=doc.uid,
+                text=sent,
+                keyword=None if not enable_keyword_index else Keyword(sent),
+            )
+            chunks.append(chunk)
+            if self.graph and request.input_type is InputType.TEXT:
+                chunk_ents, chunk_rels = await self.graph.recognize_with_relations(sent)
                 conv_ents, conv_rels = self._convert_from_extracted_graph(
-                    fake_chunk.uid, img_ents, img_rels, Entity, Relation
+                    chunk.uid, chunk_ents, chunk_rels, Entity, Relation
                 )
                 ents.extend(conv_ents)
                 rels.extend(conv_rels)
-            else:
-                raise RequestError(
-                    f"No OCR or Graph provider for input type: {request.input_type}"
-                )
 
-            if self.chunk:
-                sentences.extend(await self.chunk.segment(doc.text))
-            elif doc.text:
-                sentences.append(doc.text)
-            for sent in sentences:
-                chunk = Chunk(
-                    vec=await self.text_emb.vectorize_chunk(sent),
-                    doc_id=doc.uid,
-                    text=sent,
-                    keyword=None if not enable_keyword_index else Keyword(sent),
-                )
-                if self.graph and request.input_type is InputType.TEXT:
-                    chunk_ents, chunk_rels = await self.graph.recognize_with_relations(
-                        sent
-                    )
-                    conv_ents, conv_rels = self._convert_from_extracted_graph(
-                        chunk.uid, chunk_ents, chunk_rels, Entity, Relation
-                    )
-                    ents.extend(conv_ents)
-                    rels.extend(conv_rels)
-                chunks.append(chunk)
+        if self.graph and request.input_type is not InputType.TEXT and not sentences:
+            img_ents, img_rels = await self.graph.recognize_image(request.data)
+            conv_ents, conv_rels = self._convert_from_extracted_graph(
+                fake_chunk.uid, img_ents, img_rels, Entity, Relation
+            )
+            ents.extend(conv_ents)
+            rels.extend(conv_rels)
+            if not self.multimodal_emb:
+                chunks.append(fake_chunk)
 
         await vr.insert(doc)
         for chunk in chunks:
             await vr.insert(chunk)
         if self.index.graph:
-            if request.input_type is not InputType.TEXT:
-                # insert the fake chunk for image/pdf
-                await vr.insert(fake_chunk)
             await self.graph_insert(
                 ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
             )
@@ -360,6 +347,11 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
     ):
         """Insert entities and relations into the graph index."""
         ent_map: dict[str, _Entity] = {}
+        emb_func = (
+            self.text_emb.vectorize_chunk
+            if self.text_emb
+            else self.multimodal_emb.vectorize_multimodal_chunk
+        )
         for ent in ents:
             if ent.text not in ent_map:
                 ent_map[ent.text] = ent
@@ -376,9 +368,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 ent.chunk_uuids.extend(exist.chunk_uuids)
                 ent.description += f"\n{exist.description}"
                 await vr.remove_by(ent_cls.partial_init(uid=exist.uid))
-            ent.vec = await self.text_emb.vectorize_chunk(
-                f"{ent.text}\n{ent.description}"
-            )
+            ent.vec = await emb_func(f"{ent.text}\n{ent.description}")
             await vr.insert(ent)
 
         relation_map: dict[str, _Relation] = {}
@@ -397,7 +387,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 exist = exist_rel[0]
                 rel.description += f"\n{exist.description}"
                 await vr.remove_by(rel_cls.partial_init(uid=exist.uid))
-            rel.vec = await self.text_emb.vectorize_chunk(f"{rel.description}")
+            rel.vec = await emb_func(f"{rel.description}")
             await vr.insert(rel)
 
     async def run_search(
@@ -437,7 +427,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             if self.multimodal_emb:
                 indices = await self.rerank.rerank_multimodal(
                     query=query,
-                    chunks=[chunk.text for chunk in resp],
+                    chunks=[chunk.text for chunk in resp.chunks],
                     doc_type=resp.chunk_type,
                 )
             else:
@@ -461,11 +451,16 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         vr: "VechordRegistry",
     ):
         ents, rels = await self.graph.recognize_with_relations(query)
+        emb_func = (
+            self.text_emb.vectorize_query
+            if self.text_emb
+            else self.multimodal_emb.vectorize_multimodal_query
+        )
         if rels:
             rel_text = " ".join(rel.description for rel in rels)
             similar_rels = await vr.search_by_vector(
                 rel_cls,
-                await self.text_emb.vectorize_query(rel_text),
+                await emb_func(rel_text),
                 topk=self.search.graph.similar_k,
             )
             ent_uuids = deduplicate_uid(
@@ -484,7 +479,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         ent_text = " ".join(f"{ent.text} {ent.description}" for ent in ents)
         similar_ents = await vr.search_by_vector(
             ent_cls,
-            await self.text_emb.vectorize_query(ent_text),
+            await emb_func(ent_text),
             topk=self.search.graph.similar_k,
         )
         chunk_uuids = deduplicate_uid(
