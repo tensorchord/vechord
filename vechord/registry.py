@@ -42,7 +42,7 @@ class VechordPipeline:
     """Set up the pipeline to run multiple functions in a transaction.
 
     Args:
-        client: :class:`VectorChordClient` to be used for the transaction.
+        client: :class:`VechordClient` to be used for the transaction.
         steps: a list of functions to be run in the pipeline. The first function
             will be used to accept the input, and the last function will be used
             to return the output. The rest of the functions will be used to
