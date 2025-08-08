@@ -57,7 +57,7 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
     def from_prompt_with_data(
         cls, prompt: str, mime_type: GeminiMimeType, data: bytes
     ) -> Self:
-        return GeminiGenerateRequest(
+        return cls(
             contents=Part(
                 [
                     ContentPart(text=prompt),
@@ -70,7 +70,7 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
     def from_prompt_data_structure_resp(
         cls, prompt: str, mime_type: GeminiMimeType, data: bytes, schema: dict[str, Any]
     ) -> Self:
-        return GeminiGenerateRequest(
+        return cls(
             contents=Part(
                 [
                     ContentPart(text=prompt),
@@ -82,13 +82,13 @@ class GeminiGenerateRequest(msgspec.Struct, kw_only=True):
 
     @classmethod
     def from_prompt(cls, prompt: str) -> Self:
-        return GeminiGenerateRequest(contents=Part(parts=[ContentPart(text=prompt)]))
+        return cls(contents=Part(parts=[ContentPart(text=prompt)]))
 
     @classmethod
     def from_prompt_structure_response(
         cls, prompt: str, schema: dict[str, Any]
     ) -> Self:
-        return GeminiGenerateRequest(
+        return cls(
             contents=Part(parts=[ContentPart(text=prompt)]),
             generation_config=GenerationConfig(response_json_schema=schema),
         )
@@ -132,7 +132,7 @@ class GeminiEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
     def from_text_with_type(
         cls, text: str, task_type: GeminiEmbeddingType = "SEMANTIC_SIMILARITY"
     ) -> Self:
-        return GeminiEmbeddingRequest(
+        return cls(
             content=Part(parts=[ContentPart(text=text)]),
             task_type=task_type,
         )

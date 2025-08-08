@@ -120,6 +120,7 @@ ignore_missing_imports = true
 include = ["vechord", "tests"]
 [tool.ty.rules]
 unresolved-attribute = "ignore"  # https://github.com/astral-sh/ty/issues/133
+invalid-type-form = "ignore"  # variable in type form
 
 [tool.pdm]
 distribution = true

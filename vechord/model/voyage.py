@@ -49,7 +49,7 @@ class VoyageEmbeddingRequest(msgspec.Struct, kw_only=True):
     def from_text(
         cls, text: str, input_type: VOYAGE_INPUT_TYPE, model: str, dim: int
     ) -> Self:
-        return VoyageEmbeddingRequest(
+        return cls(
             model=model,
             input_text=text,
             input_type=input_type,
@@ -104,7 +104,7 @@ class VoyageMultiModalEmbeddingRequest(msgspec.Struct, kw_only=True):
                     image_base64=f"data:image/jpeg;base64,{base64.b64encode(image).decode('utf-8')}",
                 )
             )
-        return VoyageMultiModalEmbeddingRequest(
+        return cls(
             model=model,
             inputs=[MultiModalInput(content=contents)],
             input_type=input_type,
