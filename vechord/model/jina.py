@@ -32,7 +32,7 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
 
     @classmethod
     def from_text(cls, text: str, task: JinaEmbeddingType, model: str) -> Self:
-        return JinaEmbeddingRequest(
+        return cls(
             model=model,
             truncate=True,
             task=task,
@@ -49,7 +49,7 @@ class JinaEmbeddingRequest(msgspec.Struct, kw_only=True, omit_defaults=True):
         task: JinaEmbeddingType,
         model: str,
     ) -> Self:
-        req = JinaEmbeddingRequest(
+        req = cls(
             model=model,
             truncate=True,
             task=task,
@@ -103,7 +103,7 @@ class JinaRerankRequest(msgspec.Struct, kw_only=True):
         if not query or not documents:
             raise RequestError("Query and documents must be provided")
 
-        return JinaRerankRequest(
+        return cls(
             model=model,
             query=query,
             top_n=len(documents),
@@ -124,7 +124,7 @@ class JinaRerankRequest(msgspec.Struct, kw_only=True):
             JinaInput(text=doc) if doc_type == "text" else JinaInput(image=doc)
             for doc in documents
         ]
-        return JinaRerankRequest(
+        return cls(
             model=model,
             query=query,
             top_n=len(docs),
