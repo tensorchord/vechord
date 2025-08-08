@@ -316,14 +316,19 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
 class OpenAIDenseEmbedding(BaseTextEmbedding):
     """OpenAI Dense Embedding."""
 
-    def __init__(self, model: str = "text-embedding-3-large", dim: int = 3072):
-        key = os.environ.get("OPENAI_API_KEY")
-        if not key:
+    def __init__(
+        self,
+        model: str = "text-embedding-3-large",
+        dim: int = 3072,
+        base_url: Optional[str] = None,
+    ):
+        self.api_key = os.environ.get("OPENAI_API_KEY")
+        if not self.api_key:
             raise ValueError("env OPENAI_API_KEY not set")
 
         from openai import AsyncOpenAI
 
-        self.client = AsyncOpenAI()
+        self.client = AsyncOpenAI(api_key=self.api_key, base_url=base_url)
         self.model = model
         self.dim = dim
 
