@@ -18,7 +18,7 @@ JINA_RERANK_RPS = 8.33
 
 def is_list_obj(obj) -> bool:
     """Check if the object is a list."""
-    return issubclass(obj, (Iterable, AsyncIterable))
+    return isinstance(obj, (Iterable, AsyncIterable))
 
 
 def is_list_of_type(typ) -> bool:

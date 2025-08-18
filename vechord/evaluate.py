@@ -55,7 +55,7 @@ class BaseEvaluator(ABC):
         measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
         """Evaluate the retrieval results for a single query."""
-        if not is_list_obj(type(truth_id)):
+        if not is_list_obj(truth_id):
             truth_id = (truth_id,)
         query_relevance = {"0": {str(tid): 1 for tid in truth_id}}
         evaluator = pytrec_eval.RelevanceEvaluator(
