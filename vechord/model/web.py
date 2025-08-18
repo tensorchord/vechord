@@ -29,10 +29,7 @@ class InputType(str, Enum):
 class RunRequest(msgspec.Struct, kw_only=True, frozen=True):
     """Request to run a dynamic pipeline.
 
-    Possible `data` types:
-        - text
-        - PDF
-        - image/jpeg
+    `steps` can be omitted if the it's already defined in the pipeline.
     """
 
     name: str

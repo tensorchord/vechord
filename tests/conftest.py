@@ -26,7 +26,7 @@ TEST_POSTGRES = f"postgresql://postgres:postgres@{URL}:5432/"
 @pytest.fixture(name="registry")
 async def fixture_registry(request):
     namespace = request.node.obj.__name__
-    tables = request.param or ()
+    tables = getattr(request, "param", ())
     async with VechordRegistry(namespace, TEST_POSTGRES, tables=tables) as registry:
         yield registry
 

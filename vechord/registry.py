@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import Iterable
 from contextlib import AsyncExitStack
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -8,7 +8,6 @@ from typing import (
     Optional,
     Sequence,
     TypeVar,
-    get_origin,
     get_type_hints,
 )
 
@@ -21,21 +20,9 @@ from vechord.client import (
 )
 from vechord.log import logger
 from vechord.spec import Table, Vector
+from vechord.utils import get_iterator_type, is_list_of_type
 
 T = TypeVar("T", bound=Table)
-
-
-def is_list_of_type(typ) -> bool:
-    origin = get_origin(typ)
-    if origin is None:
-        return False
-    return issubclass(origin, (Iterable, AsyncIterable))
-
-
-def get_iterator_type(typ) -> type:
-    if not is_list_of_type(typ):
-        return typ
-    return get_iterator_type(typ.__args__[0])
 
 
 class VechordPipeline:

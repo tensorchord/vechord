@@ -10,10 +10,12 @@ from vechord.errors import DecodeStructuredOutputError, RequestError
 from vechord.model import (
     GeminiGenerateRequest,
     GeminiMimeType,
+    InputType,
     RetrievedChunk,
     UMBRELAScore,
 )
 from vechord.provider import GeminiGenerateProvider
+from vechord.utils import is_list_obj
 
 
 class BaseEvaluator(ABC):
@@ -48,12 +50,14 @@ class BaseEvaluator(ABC):
 
     @staticmethod
     def evaluate_one(
-        truth_id: str,
+        truth_id: str | list[str],
         resp_ids: list[str],
         measures: Sequence[str] = ("map", "ndcg", "recall"),
     ):
         """Evaluate the retrieval results for a single query."""
-        query_relevance = {"0": {str(truth_id): 1}}
+        if not is_list_obj(type(truth_id)):
+            truth_id = (truth_id,)
+        query_relevance = {"0": {str(tid): 1 for tid in truth_id}}
         evaluator = pytrec_eval.RelevanceEvaluator(
             query_relevance=query_relevance, measures=measures
         )
@@ -174,7 +178,9 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
     def name(self) -> str:
         return f"gemini_umbrela_{self.model}"
 
-    async def estimate(self, query: str, passage: str, chunk_type: str = "text") -> int:
+    async def estimate(
+        self, query: str, passage: str, chunk_type: InputType = InputType.TEXT
+    ) -> int:
         if not passage:
             return 0
 
@@ -182,11 +188,11 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
             GeminiGenerateRequest.from_prompt_structure_response(
                 self.prompt.format(query=query, passage=passage), self.score_schema
             )
-            if chunk_type == "text"
+            if chunk_type is InputType.TEXT
             else GeminiGenerateRequest.from_prompt_data_structure_resp(
                 self.prompt.format(query=query, passage=UMBRELA_IMAGE_PASSAGE),
                 mime_type=GeminiMimeType.PDF
-                if chunk_type == "pdf"
+                if chunk_type is InputType.PDF
                 else GeminiMimeType.JPEG,
                 data=base64.b64decode(passage),
                 schema=self.score_schema,
@@ -202,7 +208,7 @@ class GeminiUMBRELAEvaluator(BaseEvaluator, GeminiGenerateProvider):
         return score
 
     async def evaluate_with_estimation(
-        self, query: str, passages: list[str], chunk_type: str = "text"
+        self, query: str, passages: list[str], chunk_type: InputType = InputType.TEXT
     ) -> dict[str, float]:
         """Calculate the Precision@K and Mean Reciprocal Rank (MRR)."""
         if not query or not passages or all(not p.strip() for p in passages):
