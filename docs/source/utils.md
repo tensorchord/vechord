@@ -22,10 +22,14 @@ pip install vechord[openai,spacy,cohere]
     - {py:class}`~vechord.embedding.VoyageDenseEmbedding`: VoyageAI embedding
     - {py:class}`~vechord.embedding.SpacyDenseEmbedding`: Spacy embedding
 - Evaluate
-    - {py:class}`~vechord.evaluate.GeminiEvaluator`: Gemini based evaluator
+    - {py:class}`~vechord.evaluate.GeminiEvaluator`: Gemini based query generator
+    - {py:class}`~vechord.evaluate.GeminiUMBRELAEvaluator`: Gemini UMBRELA evaluator
+- GroundTruth
+    - {py:class}`~vechord.groundtruth.GroundTruth`: generate ground truth
 - Extract
     - {py:class}`~vechord.extract.SimpleExtractor`: Simple extractor
     - {py:class}`~vechord.extract.GeminiExtractor`: Gemini extractor
 - Rerank
     - {py:class}`~vechord.rerank.CohereReranker`: Cohere reranker
+    - {py:class}`~vechord.rerank.JinaReranker`: Jina MultiModal reranker
     - {py:class}`~vechord.rerank.ReciprocalRankFusion`: fuse function for hybrid retrieval

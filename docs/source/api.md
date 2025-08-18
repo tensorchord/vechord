@@ -53,6 +53,14 @@
    :show-inheritance:
 ```
 
+## GroundTruth
+
+```{eval-rst}
+.. automodule:: vechord.groundtruth
+   :members: GroundTruth
+   :show-inheritance:
+```
+
 ## Extract
 
 ```{eval-rst}
