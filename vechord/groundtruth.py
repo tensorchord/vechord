@@ -51,6 +51,20 @@ class GroundTruth:
             retrieve: a function `async fn(query: str) -> [Chunk]`
             evaluator: the UMBRELA evaluator to estimate the relevance score
             chunk_type: used by evaluator
+
+        Examples:
+            .. code-block:: python
+
+                async def retrieve_fn(query: str) -> list[Chunk]:
+                    return await vr.search_by_vector(Chunk, emb.vectorize_query(query), topk=100)
+
+                gt = GroundTruth("record-1", vr)
+                gt.generate(
+                    queries=["What's the longest river?", "What's the largest ocean?"],
+                    retrieve=retrieve_fn,
+                    evaluator=GeminiUMBRELAEvaluator(),
+                )
+
         """
         await self.vr.init_table_index((self.query_cls,))
         async with (
