@@ -21,6 +21,7 @@ publish: build
 	@uv publish
 
 test:
+	@uv sync --extra spacy --inexact
 	@uv run -- pytest -v tests
 
 sync:

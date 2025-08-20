@@ -10,15 +10,16 @@ import msgspec
 
 from vechord.chunk import BaseChunker, GeminiChunker, RegexChunker
 from vechord.client import (
+    limit_to_transaction_buffer_conn,
     set_namespace,
 )
 from vechord.embedding import (
-    BaseMultiModalEmbedding,
-    BaseTextEmbedding,
+    BaseEmbedding,
     GeminiDenseEmbedding,
     JinaDenseEmbedding,
     JinaMultiModalEmbedding,
     OpenAIDenseEmbedding,
+    SpacyDenseEmbedding,
     VoyageDenseEmbedding,
     VoyageMultiModalEmbedding,
 )
@@ -114,6 +115,7 @@ PROVIDER_MAP: dict[str, dict[str, Any]] = {
         "gemini": GeminiChunker,
     },
     "text-emb": {
+        "spacy": SpacyDenseEmbedding,
         "gemini": GeminiDenseEmbedding,
         "jina": JinaDenseEmbedding,
         "openai": OpenAIDenseEmbedding,
@@ -160,8 +162,8 @@ def find_uid_by_text(text: str, ents: list[_Entity]) -> Optional[UUID]:
 
 class DynamicPipeline(msgspec.Struct, kw_only=True):
     chunk: Optional[BaseChunker] = None
-    text_emb: Optional[BaseTextEmbedding] = None
-    multimodal_emb: Optional[BaseMultiModalEmbedding] = None
+    text_emb: Optional[BaseEmbedding] = None
+    multimodal_emb: Optional[BaseEmbedding] = None
     ocr: Optional[GeminiExtractor] = None
     rerank: Optional[BaseReranker] = None
     index: Optional[IndexOption] = None
@@ -326,13 +328,18 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
             if not self.multimodal_emb:
                 chunks.append(fake_chunk)
 
-        await vr.insert(doc)
-        for chunk in chunks:
-            await vr.insert(chunk)
-        if self.index.graph:
-            await self.graph_insert(
-                ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
-            )
+        # make sure all the insertions are using the same connection (thus it's in one transaction)
+        async with (
+            vr.client.get_connection() as conn,
+            limit_to_transaction_buffer_conn(conn),
+        ):
+            await vr.insert(doc)
+            for chunk in chunks:
+                await vr.insert(chunk)
+            if self.index.graph:
+                await self.graph_insert(
+                    ents=ents, rels=rels, ent_cls=Entity, rel_cls=Relation, vr=vr
+                )
         return RunIngestAck(name=request.name, msg="succeed", uid=doc.uid)
 
     async def graph_insert(
@@ -345,11 +352,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
     ):
         """Insert entities and relations into the graph index."""
         ent_map: dict[str, _Entity] = {}
-        emb_func = (
-            self.text_emb.vectorize_chunk
-            if self.text_emb
-            else self.multimodal_emb.vectorize_multimodal_chunk
-        )
+        emb = self.text_emb or self.multimodal_emb
         for ent in ents:
             if ent.text not in ent_map:
                 ent_map[ent.text] = ent
@@ -366,7 +369,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 ent.chunk_uuids.extend(exist.chunk_uuids)
                 ent.description += f"\n{exist.description}"
                 await vr.remove_by(ent_cls.partial_init(uid=exist.uid))
-            ent.vec = await emb_func(f"{ent.text}\n{ent.description}")
+            ent.vec = await emb.vectorize_chunk(text=f"{ent.text}\n{ent.description}")
             await vr.insert(ent)
 
         relation_map: dict[str, _Relation] = {}
@@ -385,7 +388,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
                 exist = exist_rel[0]
                 rel.description += f"\n{exist.description}"
                 await vr.remove_by(rel_cls.partial_init(uid=exist.uid))
-            rel.vec = await emb_func(f"{rel.description}")
+            rel.vec = await emb.vectorize_chunk(text=f"{rel.description}")
             await vr.insert(rel)
 
     async def run_search(
@@ -405,11 +408,8 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
 
         resp = RunSearchResponse()
         if self.search.vector:
-            vec = (
-                await self.text_emb.vectorize_query(query)
-                if self.text_emb
-                else await self.multimodal_emb.vectorize_multimodal_query(text=query)
-            )
+            emb = self.text_emb or self.multimodal_emb
+            vec = await emb.vectorize_query(text=query)
             resp.extend(
                 await vr.search_by_vector(
                     Chunk, vec, self.search.vector.topk, probe=self.search.vector.probe
@@ -450,16 +450,12 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         vr: VechordRegistry,
     ):
         ents, rels = await self.graph.recognize_with_relations(query)
-        emb_func = (
-            self.text_emb.vectorize_query
-            if self.text_emb
-            else self.multimodal_emb.vectorize_multimodal_query
-        )
+        emb = self.text_emb or self.multimodal_emb
         if rels:
             rel_text = " ".join(rel.description for rel in rels)
             similar_rels = await vr.search_by_vector(
                 rel_cls,
-                await emb_func(rel_text),
+                await emb.vectorize_query(text=rel_text),
                 topk=self.search.graph.similar_k,
             )
             ent_uuids = deduplicate_uid(
@@ -478,7 +474,7 @@ class DynamicPipeline(msgspec.Struct, kw_only=True):
         ent_text = " ".join(f"{ent.text} {ent.description}" for ent in ents)
         similar_ents = await vr.search_by_vector(
             ent_cls,
-            await emb_func(ent_text),
+            await emb.vectorize_query(text=ent_text),
             topk=self.search.graph.similar_k,
         )
         chunk_uuids = deduplicate_uid(

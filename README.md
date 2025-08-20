@@ -42,6 +42,7 @@ The related Docker images can be found in [VectorChord Suite][vectorchord-suite]
   - [x] `Extractor` to extract the content from PDF, HTML, etc.
   - [x] `EntityRecognizer` to extract the entities and relations from the text
   - [x] `Reranker` for hybrid search
+  - [x] `GroundTruth` to generate the ground truth for evaluation
 
 ## Examples
 

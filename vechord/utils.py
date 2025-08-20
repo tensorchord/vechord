@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any
+from collections.abc import AsyncIterable, Iterable
+from typing import Any, get_origin
 
 import httpx
 
@@ -13,6 +14,25 @@ VOYAGE_EMBEDDING_RPS = 33.33
 # https://jina.ai/api-dashboard/rate-limit
 JINA_EMBEDDING_RPS = 8.33
 JINA_RERANK_RPS = 8.33
+
+
+def is_list_obj(obj) -> bool:
+    """Check if the object is a list."""
+    return isinstance(obj, (Iterable, AsyncIterable))
+
+
+def is_list_of_type(typ) -> bool:
+    """Check if the **type hint** is a list or iterable."""
+    origin = get_origin(typ)
+    if origin is None:
+        return False
+    return issubclass(origin, (Iterable, AsyncIterable))
+
+
+def get_iterator_type(typ) -> type:
+    if not is_list_of_type(typ):
+        return typ
+    return get_iterator_type(typ.__args__[0])
 
 
 class RateLimitTransport(httpx.AsyncHTTPTransport):

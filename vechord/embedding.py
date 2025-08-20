@@ -29,6 +29,8 @@ class VecType(Enum):
 
 
 class BaseEmbedding(ABC):
+    SUPPORT_MULTI_MODAL = False
+
     @abstractmethod
     def name(self) -> str:
         raise NotImplementedError
@@ -41,19 +43,23 @@ class BaseEmbedding(ABC):
     def vec_type(self) -> VecType:
         raise NotImplementedError
 
+    def verify(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ):
+        if not (text or image or image_url):
+            raise ValueError(
+                "At least one of `text`, `image`, or `image_url` must be provided."
+            )
+        if not self.SUPPORT_MULTI_MODAL and (image or image_url):
+            raise ValueError(
+                "This embedding model does not support multimodal input. Please use a text input."
+            )
 
-class BaseTextEmbedding(BaseEmbedding):
     @abstractmethod
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
-        raise NotImplementedError
-
-    async def vectorize_query(self, text: str) -> np.ndarray:
-        return await self.vectorize_chunk(text)
-
-
-class BaseMultiModalEmbedding(BaseEmbedding):
-    @abstractmethod
-    async def vectorize_multimodal_chunk(
+    async def vectorize_chunk(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
@@ -61,16 +67,16 @@ class BaseMultiModalEmbedding(BaseEmbedding):
     ) -> np.ndarray:
         raise NotImplementedError
 
-    async def vectorize_multimodal_query(
+    async def vectorize_query(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ) -> np.ndarray:
-        return await self.vectorize_multimodal_chunk(text, image, image_url)
+        return await self.vectorize_chunk(text=text, image=image, image_url=image_url)
 
 
-class SpacyDenseEmbedding(BaseTextEmbedding):
+class SpacyDenseEmbedding(BaseEmbedding):
     """Spacy Dense Embedding.
 
     The default small model is unlikely to be useful for real applications.
@@ -94,12 +100,18 @@ class SpacyDenseEmbedding(BaseTextEmbedding):
     def vec_type(self):
         return VecType.DENSE
 
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
+    async def vectorize_chunk(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         doc = self.nlp(text)
         return doc.vector
 
 
-class GeminiDenseEmbedding(BaseTextEmbedding, GeminiEmbeddingProvider):
+class GeminiDenseEmbedding(BaseEmbedding, GeminiEmbeddingProvider):
     """Gemini Dense Embedding. (limit to **8,192** tokens)
 
     Args:
@@ -123,20 +135,32 @@ class GeminiDenseEmbedding(BaseTextEmbedding, GeminiEmbeddingProvider):
     def name(self) -> str:
         return f"gemini_emb_{self.model}_{self.dim}"
 
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
+    async def vectorize_chunk(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             GeminiEmbeddingRequest.from_text_with_type(text, "RETRIEVAL_DOCUMENT")
         )
         return resp.get_emb()
 
-    async def vectorize_query(self, text):
+    async def vectorize_query(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ):
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             GeminiEmbeddingRequest.from_text_with_type(text, "RETRIEVAL_QUERY")
         )
         return resp.get_emb()
 
 
-class JinaDenseEmbedding(BaseTextEmbedding, JinaEmbeddingProvider):
+class JinaDenseEmbedding(BaseEmbedding, JinaEmbeddingProvider):
     """Jina Dense Embedding. (limit to **32,768** tokens for v4, **8,192** for v3)
 
     Args:
@@ -156,26 +180,40 @@ class JinaDenseEmbedding(BaseTextEmbedding, JinaEmbeddingProvider):
     def name(self) -> str:
         return f"jina_emb_{self.model}_{self.dim}"
 
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
+    async def vectorize_chunk(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             JinaEmbeddingRequest.from_text(text, "retrieval.passage", self.model)
         )
         return resp.get_emb()
 
-    async def vectorize_query(self, text: str) -> np.ndarray:
+    async def vectorize_query(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             JinaEmbeddingRequest.from_text(text, "retrieval.query", self.model)
         )
         return resp.get_emb()
 
 
-class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
+class JinaMultiModalEmbedding(BaseEmbedding, JinaEmbeddingProvider):
     """Jina MultiModal Dense Embedding, limit to **32,768** tokens for v4.
 
     Args:
         model: Jina embedding model name, could be "jina-embeddings-v4"
         dim: embedding dimension, up to 2048
     """
+
+    SUPPORT_MULTI_MODAL = True
 
     def __init__(self, model="jina-embeddings-v4", dim=2048):
         super().__init__(model, dim)
@@ -195,6 +233,7 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         req = await self.query(
             JinaEmbeddingRequest.from_text_image(
                 text=text,
@@ -212,6 +251,7 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         req = await self.query(
             JinaEmbeddingRequest.from_text_image(
                 text=text,
@@ -224,7 +264,7 @@ class JinaMultiModalEmbedding(BaseMultiModalEmbedding, JinaEmbeddingProvider):
         return req.get_emb()
 
 
-class VoyageDenseEmbedding(BaseTextEmbedding, VoyageEmbeddingProvider):
+class VoyageDenseEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
     def __init__(
         self, model: str = "voyage-3.5", dim: Literal[256, 512, 1024, 2048] = 1024
     ):
@@ -239,7 +279,13 @@ class VoyageDenseEmbedding(BaseTextEmbedding, VoyageEmbeddingProvider):
     def vec_type(self) -> VecType:
         return VecType.DENSE
 
-    async def vectorize_chunk(self, text):
+    async def vectorize_chunk(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ):
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             VoyageEmbeddingRequest.from_text(
                 text=text, input_type="document", model=self.model, dim=self.dim
@@ -247,7 +293,13 @@ class VoyageDenseEmbedding(BaseTextEmbedding, VoyageEmbeddingProvider):
         )
         return resp.get_emb()
 
-    async def vectorize_query(self, text):
+    async def vectorize_query(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ):
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             VoyageEmbeddingRequest.from_text(
                 text=text, input_type="query", model=self.model, dim=self.dim
@@ -256,7 +308,7 @@ class VoyageDenseEmbedding(BaseTextEmbedding, VoyageEmbeddingProvider):
         return resp.get_emb()
 
 
-class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider):
+class VoyageMultiModalEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
     """Voyage Multimodal Embedding.
 
     Accepts text, image (as bytes), or image_url.
@@ -264,6 +316,8 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
     Limits:
         - image: less than **16 million pixels** or **20 MB** in size
     """
+
+    SUPPORT_MULTI_MODAL = True
 
     def __init__(self, model="voyage-multimodal-3", dim=1024):
         super().__init__(model, dim)
@@ -284,6 +338,7 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
         image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ):
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             VoyageMultiModalEmbeddingRequest.build(
                 text=text,
@@ -301,6 +356,7 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
         image: Optional[bytes] = None,
         image_url: Optional[str] = None,
     ):
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.query(
             VoyageMultiModalEmbeddingRequest.build(
                 text=text,
@@ -313,7 +369,7 @@ class VoyageMultiModalEmbedding(BaseMultiModalEmbedding, VoyageEmbeddingProvider
         return resp.get_emb()
 
 
-class OpenAIDenseEmbedding(BaseTextEmbedding):
+class OpenAIDenseEmbedding(BaseEmbedding):
     """OpenAI Dense Embedding."""
 
     def __init__(
@@ -341,7 +397,13 @@ class OpenAIDenseEmbedding(BaseTextEmbedding):
     def name(self) -> str:
         return f"openai_emb_{self.model}_{self.dim}"
 
-    async def vectorize_chunk(self, text: str) -> np.ndarray:
+    async def vectorize_chunk(
+        self,
+        text: Optional[str] = None,
+        image: Optional[bytes] = None,
+        image_url: Optional[str] = None,
+    ) -> np.ndarray:
+        self.verify(text=text, image=image, image_url=image_url)
         resp = await self.client.embeddings.create(
             model=self.model, input=text, dimensions=self.dim
         )
