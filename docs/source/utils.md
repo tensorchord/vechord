@@ -24,11 +24,15 @@ pip install vechord[openai,spacy,cohere]
 - Evaluate
     - {py:class}`~vechord.evaluate.GeminiEvaluator`: Gemini based query generator
     - {py:class}`~vechord.evaluate.GeminiUMBRELAEvaluator`: Gemini UMBRELA evaluator
-- GroundTruth
-    - {py:class}`~vechord.groundtruth.GroundTruth`: generate ground truth
 - Extract
     - {py:class}`~vechord.extract.SimpleExtractor`: Simple extractor
     - {py:class}`~vechord.extract.GeminiExtractor`: Gemini extractor
+    - {py:class}`~vechord.extract.LlamaParseExtractor`: Llama extractor
+- Graph
+    - {py:class}`~vechord.graph.SpacyEntityRecognizer`: Spacy based entity recognizer
+    - {py:class}`~vechord.graph.GeminiEntityRecognizer`: Gemini based entity recognizer
+- GroundTruth
+    - {py:class}`~vechord.groundtruth.GroundTruth`: generate ground truth
 - Rerank
     - {py:class}`~vechord.rerank.CohereReranker`: Cohere reranker
     - {py:class}`~vechord.rerank.JinaReranker`: Jina MultiModal reranker

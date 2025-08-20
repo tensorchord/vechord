@@ -45,6 +45,14 @@
    :show-inheritance:
 ```
 
+## Extract
+
+```{eval-rst}
+.. automodule:: vechord.extract
+   :members:
+   :show-inheritance:
+```
+
 ## Evaluate
 
 ```{eval-rst}
@@ -61,10 +69,10 @@
    :show-inheritance:
 ```
 
-## Extract
+## Graph
 
 ```{eval-rst}
-.. automodule:: vechord.extract
+.. automodule:: vechord.graph
    :members:
    :show-inheritance:
 ```
