@@ -39,7 +39,7 @@ jobs:
     - name: Test
       env:
         PYTEST_ADDOPTS: -s
-        IMAGE: ghcr.io/tensorchord/vchord-suite:pg17-20250620
+        IMAGE: ghcr.io/tensorchord/vchord-suite:pg17-20250815
       run: |
         docker run --rm -d -p 5432:5432 --name vdb -e POSTGRES_PASSWORD=postgres --health-cmd="pg_isready -U postgres" --health-interval=1s --health-timeout=1s --health-retries=5 ${IMAGE}
 

@@ -22,8 +22,8 @@ pip install vechord
 
 The related Docker images can be found in [VectorChord Suite][vectorchord-suite].
 
-- DockerHub: `tensorchord/vchord-suite:pg17-20250620`
-- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250620`
+- DockerHub: `tensorchord/vchord-suite:pg17-20250815`
+- GitHub Packages: `ghcr.io/tensorchord/vchord-suite:pg17-20250815`
 
 ## Features
 
@@ -172,7 +172,7 @@ uvicorn.run(create_web_app(vr))
 ## Development
 
 ```bash
-docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord-suite:pg17-20250620
+docker run --rm -d --name vdb -e POSTGRES_PASSWORD=postgres -p 5432:5432 ghcr.io/tensorchord/vchord-suite:pg17-20250815
 envd up
 # inside the envd env, sync all the dependencies
 make sync
