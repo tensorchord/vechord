@@ -227,7 +227,7 @@ class JinaMultiModalEmbedding(BaseEmbedding, JinaEmbeddingProvider):
     def name(self) -> str:
         return f"jina_emb_{self.model}_{self.dim}"
 
-    async def vectorize_multimodal_chunk(
+    async def vectorize_chunk(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
@@ -245,7 +245,7 @@ class JinaMultiModalEmbedding(BaseEmbedding, JinaEmbeddingProvider):
         )
         return req.get_emb()
 
-    async def vectorize_multimodal_query(
+    async def vectorize_query(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
@@ -332,7 +332,7 @@ class VoyageMultiModalEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
     def vec_type(self) -> VecType:
         return VecType.DENSE
 
-    async def vectorize_multimodal_chunk(
+    async def vectorize_chunk(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
@@ -350,7 +350,7 @@ class VoyageMultiModalEmbedding(BaseEmbedding, VoyageEmbeddingProvider):
         )
         return resp.get_emb()
 
-    async def vectorize_multimodal_query(
+    async def vectorize_query(
         self,
         text: Optional[str] = None,
         image: Optional[bytes] = None,
